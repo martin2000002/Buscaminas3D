@@ -29,10 +29,6 @@ UI_BRUSH_COLOR  EQU 00F0F0F0h  ; Color gris claro
 FlagCountStr    db "10", 0
 TimerStr        db "00:00", 0
 
-formatStr db "topAreaHeight=%d, iconSize=%d, centerY=%d", 0
-iconPosStr db "Posición del icono: xPos=%d, centerY=%d", 0
-buffer db 256 dup(0)  
-
 .code
 
 ; Función para dibujar el encabezado del juego
@@ -88,10 +84,6 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     sub eax, iconSize
     shr eax, 1          ; Dividir por 2
     mov centerY, eax    ; centerY es la posición Y para los íconos
-
-    ; ----- DEPURACIÓN: Mostrar valores en la ventana de Debug -----
-    invoke wsprintf, ADDR buffer, ADDR formatStr, topAreaHeight, iconSize, centerY
-    invoke OutputDebugString, ADDR buffer
     
     ; Establecer modo de fondo transparente para el texto
     invoke SetBkMode, hdc, TRANSPARENT
@@ -127,11 +119,16 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     invoke GetTextExtentPoint32, hdc, addr FlagCountStr, 2, addr textWidth
 
     ; Obtener ancho del texto del timer (TimerStr)
+    ; (Podríamos reutilizar textWidth, pero necesitamos ambos para un cálculo preciso)
     invoke GetTextExtentPoint32, hdc, addr TimerStr, 5, addr timerTextWidth
     
     ; Obtener ancho del área cliente
     invoke GetClientRect, hWnd, addr rect
     
+
+
+
+
     ; Calcular ancho total de cada grupo:
     ; Grupo bandera: iconSize + 10 (espacio) + textWidth
     ; Grupo reloj: iconSize + 10 (espacio) + timerTextWidth
@@ -157,8 +154,7 @@ DrawHeader proc hWnd:HWND, hdc:HDC
 
     ; Posición inicial para el icono de bandera
     mov xPos, edx
-    
-    ; ---------- Mostrar ícono de bandera y contador ----------
+
     ; Cargar el ícono de bandera
     invoke LoadImage, hInstance, IDI_FLAG, IMAGE_ICON, iconSize, iconSize, LR_DEFAULTCOLOR
     mov hFlagIcon, eax
@@ -166,54 +162,32 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     ; Dibujar el ícono de bandera
     invoke DrawIconEx, hdc, xPos, centerY, hFlagIcon, iconSize, iconSize, 0, NULL, DI_NORMAL
 
-    ; ----- DEPURACIÓN: Mostrar posición del icono -----
-    invoke wsprintf, ADDR buffer, ADDR iconPosStr, xPos, centerY
-    invoke OutputDebugString, ADDR buffer
-    
-    ; Obtener dimensiones del texto del contador para centrarlo verticalmente
-    invoke GetTextExtentPoint32, hdc, addr FlagCountStr, 2, addr textWidth
-    mov eax, textWidth
-    mov textWidth, eax
-    
-    ; Calcular posición vertical para centrar el texto con el icono
-    mov eax, topAreaHeight
-    sub eax, textHeight
-    shr eax, 1           ; Dividir por 2 para centrar
-    
-    ; Dibujar el contador de banderas (alineado verticalmente con el icono)
-    mov eax, iconSize
-    add xPos, eax        ; Usar registro para sumar iconSize
-    add xPos, 10         ; Pequeño espacio entre icono y texto
+    ; Posición para el texto del contador (icono + espacio)
+    mov eax, iconSize      ; Cargamos el valor de iconSize en eax
+    add xPos, eax          ; Sumamos eax a xPos
+    add xPos, 10
     invoke TextOut, hdc, xPos, centerY, addr FlagCountStr, 2
-    
-    ; ---------- Mostrar ícono de reloj y timer ----------
-    ; Posición para el reloj: centro + espacio/2
-    mov eax, rect.right
-    shr eax, 1          ; Centro de la ventana
-    mov xPos, eax
-    
-    ; Necesitamos recuperar el valor de espacio/2
-    mov ebx, 150        ; Espacio entre los dos grupos de elementos
-    shr ebx, 1          ; ebx = espacio/2
-    add xPos, ebx
-    
+
+    ; Posición para el icono de reloj (contador + espacio150)
+    mov eax, textWidth      ; Cargamos el valor de iconSize en eax
+    add xPos, eax          ; Sumamos eax a xPos
+    add xPos, 150 - 10  ; Restamos 10 porque ya sumamos 10 después del icono de bandera
+    mov xPos, eax       ; Ajustamos para el grupo del reloj
+
     ; Cargar el ícono de reloj
     invoke LoadImage, hInstance, IDI_CLOCK, IMAGE_ICON, iconSize, iconSize, LR_DEFAULTCOLOR
     mov hClockIcon, eax
     
     ; Dibujar el ícono de reloj (en la misma altura que el de bandera)
     invoke DrawIconEx, hdc, xPos, centerY, hClockIcon, iconSize, iconSize, 0, NULL, DI_NORMAL
-    
-    ; Obtener dimensiones del texto del timer para centrarlo verticalmente
-    invoke GetTextExtentPoint32, hdc, addr TimerStr, 5, addr textWidth
-    mov eax, textWidth
-    mov textWidth, eax
-    
-    ; Dibujar el timer (alineado verticalmente con el icono)
-    mov eax, iconSize
-    add xPos, eax        ; Usar registro para sumar iconSize
-    add xPos, 10        ; Pequeño espacio entre icono y texto
+
+    ; Posición para el texto del timer (reloj + espacio)
+    mov eax, iconSize      ; Cargamos el valor de iconSize en eax
+    add xPos, eax          ; Sumamos eax a xPos
+    add xPos, 10
     invoke TextOut, hdc, xPos, centerY, addr TimerStr, 5
+
+
     
     ; Restaurar la fuente original y el modo de fondo
     invoke SelectObject, hdc, oldFont

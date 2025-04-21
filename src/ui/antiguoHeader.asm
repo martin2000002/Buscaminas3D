@@ -29,10 +29,6 @@ UI_BRUSH_COLOR  EQU 00F0F0F0h  ; Color gris claro
 FlagCountStr    db "10", 0
 TimerStr        db "00:00", 0
 
-formatStr db "topAreaHeight=%d, iconSize=%d, centerY=%d", 0
-iconPosStr db "Posición del icono: xPos=%d, centerY=%d", 0
-buffer db 256 dup(0)  
-
 .code
 
 ; Función para dibujar el encabezado del juego
@@ -44,7 +40,6 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     LOCAL hInstance:HINSTANCE
     LOCAL topAreaHeight:DWORD
     LOCAL centerY:DWORD
-    LOCAL timerTextWidth:DWORD
     LOCAL textWidth:DWORD
     LOCAL textHeight:DWORD
     LOCAL xPos:DWORD
@@ -88,10 +83,6 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     sub eax, iconSize
     shr eax, 1          ; Dividir por 2
     mov centerY, eax    ; centerY es la posición Y para los íconos
-
-    ; ----- DEPURACIÓN: Mostrar valores en la ventana de Debug -----
-    invoke wsprintf, ADDR buffer, ADDR formatStr, topAreaHeight, iconSize, centerY
-    invoke OutputDebugString, ADDR buffer
     
     ; Establecer modo de fondo transparente para el texto
     invoke SetBkMode, hdc, TRANSPARENT
@@ -122,41 +113,23 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     ; ---------- Posicionar elementos en el centro horizontal ----------
     ; Calcular el ancho total que ocuparán todos los elementos
     ; Supongamos: [FLAG][espacio10][10][espacio50][CLOCK][espacio10][00:00]
-
-    ; Obtener ancho del texto del contador (FlagCountStr)
-    invoke GetTextExtentPoint32, hdc, addr FlagCountStr, 2, addr textWidth
-
-    ; Obtener ancho del texto del timer (TimerStr)
-    invoke GetTextExtentPoint32, hdc, addr TimerStr, 5, addr timerTextWidth
     
     ; Obtener ancho del área cliente
     invoke GetClientRect, hWnd, addr rect
     
-    ; Calcular ancho total de cada grupo:
-    ; Grupo bandera: iconSize + 10 (espacio) + textWidth
-    ; Grupo reloj: iconSize + 10 (espacio) + timerTextWidth
-    mov eax, iconSize
-    add eax, 10
-    add eax, textWidth
-    mov ebx, iconSize
-    add ebx, 10
-    add ebx, timerTextWidth
-
-    ; Espacio entre los dos grupos (150 píxeles)
-    mov ecx, 150
-
-    ; Ancho total de todos los elementos: eax (grupo bandera) + ecx (espacio) + ebx (grupo reloj)
-    add eax, ecx
-    add eax, ebx
-
-    ; Calcular punto de inicio (centro - ancho_total/2)
-    mov edx, rect.right
-    shr edx, 1          ; Centro de la ventana (rect.right / 2)
-    sub edx, eax
-    shr edx, 1          ; edx = centro - ancho_total/2 (para centrar todo)
-
-    ; Posición inicial para el icono de bandera
-    mov xPos, edx
+    ; Calcular posiciones horizontales para centrar ambos elementos
+    ; Primero, determinar posición central horizontal de la ventana
+    mov eax, rect.right
+    shr eax, 1           ; Centro de la ventana
+    
+    ; Calcular espacio entre elementos
+    mov ebx, 150         ; Espacio entre los dos grupos de elementos
+    
+    ; Posición para la bandera: centro - espacio/2 - anchoIcono
+    mov xPos, eax
+    sub xPos, ebx
+    shr ebx, 1           ; ebx = espacio/2
+    sub xPos, ebx
     
     ; ---------- Mostrar ícono de bandera y contador ----------
     ; Cargar el ícono de bandera
@@ -165,10 +138,6 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     
     ; Dibujar el ícono de bandera
     invoke DrawIconEx, hdc, xPos, centerY, hFlagIcon, iconSize, iconSize, 0, NULL, DI_NORMAL
-
-    ; ----- DEPURACIÓN: Mostrar posición del icono -----
-    invoke wsprintf, ADDR buffer, ADDR iconPosStr, xPos, centerY
-    invoke OutputDebugString, ADDR buffer
     
     ; Obtener dimensiones del texto del contador para centrarlo verticalmente
     invoke GetTextExtentPoint32, hdc, addr FlagCountStr, 2, addr textWidth
