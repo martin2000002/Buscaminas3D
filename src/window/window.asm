@@ -17,7 +17,8 @@ include include\structures.inc
 include include\resource.inc
 
 include src\window\window.inc
-include src\ui\header.inc      ; Incluir el nuevo header.inc
+include src\ui\header.inc      ; Incluir el header.inc
+include src\ui\grid.inc        ; Incluir el nuevo grid.inc
 
 ; Declaramos las variables externas definidas en main.asm
 EXTERN ClassName:BYTE
@@ -134,6 +135,9 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         
         ; Dibujar el encabezado del juego
         invoke DrawHeader, hWnd, hdc
+        
+        ; Dibujar las matrices 4x4
+        invoke DrawGrids, hWnd, hdc
         
         invoke EndPaint, hWnd, addr ps
         
