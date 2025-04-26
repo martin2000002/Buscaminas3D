@@ -23,15 +23,34 @@ EXTERN gameState:GameState
 CELL_COLOR_NORMAL    EQU 00D3D3D3h   ; Color normal (gris claro)
 CELL_COLOR_CLICKED   EQU 0000FF00h   ; Color cuando se hace clic (verde)
 CELL_COLOR_FLAGGED   EQU 000000FFh   ; Color cuando tiene bandera (rojo)
+CELL_COLOR_MINE      EQU 00000000h   ; Color para las minas (negro)
 
-; Definir un array para representar las celdas (6 caras, 4x4 cada una)
-; La estructura es: [gridIndex][cellY][cellX]
-; Donde gridIndex va de 0 a 5 (6 caras del cubo)
-; Y cellX, cellY van de 0 a 3 (matriz 4x4)
+; Variables para generación aleatoria
+seed DWORD 12345       ; Semilla para generación de números aleatorios
+
 .data?
 cellStates BYTE 6 * 4 * 4 * 4 dup(?)  ; Estado de cada celda (hasMine, isRevealed, isFlagged, adjacentMines)
 
 .code
+
+;-----------------------------------------------------------------------------
+; Random - Genera un número pseudoaleatorio
+; Retorna:
+;   eax - Número aleatorio generado
+;-----------------------------------------------------------------------------
+Random proc
+    ; Algoritmo simple de congruencia lineal
+    mov eax, seed
+    imul eax, 1103515245
+    add eax, 12345
+    mov seed, eax
+    
+    ; Devolver un número entre 0 y 32767
+    shr eax, 16
+    and eax, 7FFFh
+    
+    ret
+Random endp
 
 ;-----------------------------------------------------------------------------
 ; InitGame - Inicializa el estado del juego
@@ -41,6 +60,11 @@ InitGame proc
     LOCAL j:DWORD
     LOCAL k:DWORD
     LOCAL cellOffset:DWORD
+    LOCAL minesLeft:DWORD
+    LOCAL gridIndex:DWORD
+    LOCAL cellX:DWORD
+    LOCAL cellY:DWORD
+    LOCAL totalCells:DWORD
     
     ; Inicializar todas las celdas
     mov i, 0
@@ -92,6 +116,74 @@ InitGame proc
         inc i
     .endw
     
+    ; Obtener la hora actual como semilla
+    invoke GetTickCount
+    mov seed, eax
+    
+    ; Colocar MINE_COUNT minas aleatoriamente
+    mov eax, MINE_COUNT
+    mov minesLeft, eax
+
+    ; Total de celdas disponibles (4 caras x 4x4 celdas)
+    mov eax, 4      ; Solo usaremos 4 caras para simplificar
+    mov ebx, 16     ; 4x4 celdas por cara
+    mul ebx
+    mov totalCells, eax
+    
+    ; Colocar minas mientras queden por colocar
+    .while minesLeft > 0
+        ; Generar gridIndex aleatorio (0-3)
+        invoke Random
+        mov ebx, 4
+        xor edx, edx
+        div ebx
+        mov gridIndex, edx    ; edx contiene el resto de la división (0-3)
+        
+        ; Generar cellX aleatorio (0-3)
+        invoke Random
+        mov ebx, 4
+        xor edx, edx
+        div ebx
+        mov cellX, edx
+        
+        ; Generar cellY aleatorio (0-3)
+        invoke Random
+        mov ebx, 4
+        xor edx, edx
+        div ebx
+        mov cellY, edx
+        
+        ; Calcular offset de la celda
+        mov eax, gridIndex
+        mov ebx, 16    ; 4 * 4
+        mul ebx
+        mov cellOffset, eax
+        
+        mov eax, cellY
+        mov ebx, 4
+        mul ebx
+        add cellOffset, eax
+        
+        mov ecx, cellX
+        add cellOffset, ecx
+        
+        ; Multiplicar por 4 (tamaño de cada elemento)
+        mov eax, cellOffset
+        shl eax, 2    ; Multiplicar por 4
+        mov cellOffset, eax
+        
+        ; Verificar si ya hay una mina en esta celda
+        mov ebx, offset cellStates
+        add ebx, cellOffset
+        
+        mov al, byte ptr [ebx]    ; hasMine
+        .if al == 0
+            ; No hay mina, colocar una
+            mov byte ptr [ebx], 1
+            dec minesLeft
+        .endif
+    .endw
+    
     ; Inicializar el estado del juego
     mov gameState.isRunning, 1
     invoke GetTickCount
@@ -118,6 +210,7 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     LOCAL cellY_val:BYTE
     LOCAL isRevealed:BYTE
     LOCAL isFlagged:BYTE
+    LOCAL hasMine:BYTE
     
     ; Validar parámetros
     mov eax, gridIndex
@@ -162,6 +255,10 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     mov ebx, offset cellStates
     add ebx, cellOffset
     
+    ; hasMine = cellStates[offset]
+    mov al, byte ptr [ebx]
+    mov hasMine, al
+    
     ; isRevealed = cellStates[offset+1]
     mov al, byte ptr [ebx+1]
     mov isRevealed, al
@@ -191,9 +288,6 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         
         ; Incrementar el contador de celdas reveladas
         inc gameState.cellsRevealed
-        
-        ; Aquí iría la lógica para verificar si hay mina, etc.
-        ; Por ahora solo cambiamos el estado de la celda
         
     ; Si es clic derecho
     .else

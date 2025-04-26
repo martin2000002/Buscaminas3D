@@ -12,6 +12,7 @@ includelib \masm32\lib\kernel32.lib
 includelib \masm32\lib\gdi32.lib
 
 include include\constants.inc
+include include\resources.inc
 include include\structures.inc
 include src\ui\grid.inc
 include src\game\game.inc  ; Incluir el módulo de lógica de juego
@@ -26,11 +27,13 @@ GRID_COLOR          EQU 00000000h   ; Color de las líneas del grid (negro)
 CELL_COLOR          EQU 00D3D3D3h   ; Color de fondo de las celdas (gris claro)
 CELL_COLOR_CLICKED  EQU 0000FF00h   ; Color cuando se hace clic (verde)
 CELL_COLOR_FLAGGED  EQU 000000FFh   ; Color cuando tiene bandera (rojo)
+MINE_COLOR          EQU 00000000h   ; Color para las minas (negro)
 
 ; Constantes definidas como porcentajes (multiplicadas por 100 para evitar decimales)
 HORIZONTAL_MARGIN   EQU 5           ; 5% del ancho disponible entre cada grid
 VERTICAL_MARGIN     EQU 15          ; 15% del alto disponible como margen vertical
 CELL_PADDING_PCT    EQU 5           ; 5% del tamaño de la celda como padding
+MINE_RADIUS_PCT     EQU 20          ; 20% del tamaño de la celda como radio para la mina
 
 ; Variables globales para la geometría del grid
 gridGeometry STRUCT
@@ -179,7 +182,7 @@ DrawGrids proc hWnd:HWND, hdc:HDC
     mov currentX, eax
     
     .while i < 4
-        invoke DrawSingleGrid, hdc, currentX, currentGeometry.startY, currentGeometry.gridSize, currentGeometry.gridSize, i
+        invoke DrawSingleGrid, hdc, currentX, currentGeometry.startY, currentGeometry.gridSize, currentGeometry.gridSize, i, hWnd
         
         ; Avanzar a la siguiente posición X
         mov eax, currentX
@@ -202,8 +205,10 @@ DrawGrids endp
 ;   gridWidth, gridHeight - Dimensiones del grid
 ;   gridIndex - Índice del grid (0-3)
 ;-----------------------------------------------------------------------------
-DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD, gridIndex:DWORD
+DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD, gridIndex:DWORD, hWnd:HWND
     LOCAL cellPadding:DWORD
+    LOCAL mineSize:DWORD
+    LOCAL flagSize:DWORD
     LOCAL row:DWORD
     LOCAL col:DWORD
     LOCAL cellX:DWORD
@@ -214,6 +219,11 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     LOCAL hOldBrush:HBRUSH
     LOCAL rect:RECT
     LOCAL cellData:Cell      ; Para almacenar el estado de cada celda
+    LOCAL centerX:DWORD
+    LOCAL centerY:DWORD
+    LOCAL hInstance:HINSTANCE
+    LOCAL hMineIcon:HICON
+    LOCAL hFlagIcon:HICON
     
     ; Calcular el padding de celda basado en el porcentaje
     mov eax, currentGeometry.cellWidth
@@ -228,6 +238,23 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
         mov cellPadding, 1
     .endif
     
+    ; Calcular el tamaño del ícono de mina basado en el porcentaje
+    mov eax, currentGeometry.cellWidth
+    mov ebx, 60      ; 60% del tamaño de la celda
+    mul ebx
+    mov ebx, 100
+    div ebx
+    mov mineSize, eax
+    
+    ; Asegurar que el tamaño del ícono sea al menos 10 píxeles
+    .if mineSize < 10
+        mov mineSize, 10
+    .endif
+    
+    ; Usar el mismo tamaño para el ícono de bandera
+    mov eax, mineSize
+    mov flagSize, eax
+    
     ; Crear pluma
     invoke CreatePen, PS_SOLID, 1, GRID_COLOR
     mov hPen, eax
@@ -235,6 +262,10 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     ; Seleccionar pluma en el DC
     invoke SelectObject, hdc, hPen
     mov hOldPen, eax
+    
+    ; Obtener la instancia actual
+    invoke GetWindowLong, hWnd, GWL_HINSTANCE
+    mov hInstance, eax
     
     ; Dibujar cada celda del grid
     mov row, 0
@@ -280,14 +311,8 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                 ; Celda revelada
                 invoke CreateSolidBrush, CELL_COLOR_CLICKED
             .else
-                mov al, cellData.isFlagged
-                .if al != 0
-                    ; Celda con bandera
-                    invoke CreateSolidBrush, CELL_COLOR_FLAGGED
-                .else
-                    ; Celda normal
-                    invoke CreateSolidBrush, CELL_COLOR
-                .endif
+                ; Celda normal, siempre utilizamos el color normal
+                invoke CreateSolidBrush, CELL_COLOR
             .endif
             mov hBrush, eax
             
@@ -297,6 +322,61 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
             
             ; Dibujar la celda
             invoke Rectangle, hdc, rect.left, rect.top, rect.right, rect.bottom
+            
+            ; Calcular el centro de la celda (lo usaremos para ambos íconos)
+            mov eax, rect.left
+            add eax, rect.right
+            shr eax, 1         ; Dividir por 2
+            mov centerX, eax
+            
+            mov eax, rect.top
+            add eax, rect.bottom
+            shr eax, 1         ; Dividir por 2
+            mov centerY, eax
+            
+            ; Calcular la esquina superior izquierda para los íconos
+            mov eax, centerX
+            mov ebx, mineSize
+            shr ebx, 1         ; Dividir por 2
+            sub eax, ebx
+            mov rect.left, eax
+            
+            mov eax, centerY
+            mov ebx, mineSize
+            shr ebx, 1         ; Dividir por 2
+            sub eax, ebx
+            mov rect.top, eax
+            
+            ; Si la celda está revelada y tiene mina, dibujar un ícono de mina
+            mov al, cellData.isRevealed
+            .if al != 0
+                mov al, cellData.hasMine
+                .if al != 0
+                    ; Cargar el ícono de mina
+                    invoke LoadImage, hInstance, IDI_MINE, IMAGE_ICON, mineSize, mineSize, LR_DEFAULTCOLOR
+                    mov hMineIcon, eax
+                    
+                    ; Dibujar el ícono
+                    invoke DrawIconEx, hdc, rect.left, rect.top, hMineIcon, mineSize, mineSize, 0, NULL, DI_NORMAL
+                    
+                    ; Liberar el ícono
+                    invoke DestroyIcon, hMineIcon
+                .endif
+            .else
+                ; Si la celda tiene bandera, dibujar el ícono de bandera
+                mov al, cellData.isFlagged
+                .if al != 0
+                    ; Cargar el ícono de bandera
+                    invoke LoadImage, hInstance, IDI_FLAG, IMAGE_ICON, flagSize, flagSize, LR_DEFAULTCOLOR
+                    mov hFlagIcon, eax
+                    
+                    ; Dibujar el ícono
+                    invoke DrawIconEx, hdc, rect.left, rect.top, hFlagIcon, flagSize, flagSize, 0, NULL, DI_NORMAL
+                    
+                    ; Liberar el ícono
+                    invoke DestroyIcon, hFlagIcon
+                .endif
+            .endif
             
             ; Restaurar pincel original y liberar el creado
             invoke SelectObject, hdc, hOldBrush

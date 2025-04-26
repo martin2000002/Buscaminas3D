@@ -3,7 +3,9 @@
 // Definiciones de recursos
 #define IDI_FLAG         201
 #define IDI_CLOCK        202
+#define IDI_MINE         203
 
 // Iconos para el juego
 IDI_FLAG ICON "resources\flag.ico"
 IDI_CLOCK ICON "resources\clock.ico"
+IDI_MINE ICON "resources\mine.ico"

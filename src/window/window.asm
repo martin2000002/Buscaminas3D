@@ -14,7 +14,7 @@ includelib \masm32\lib\gdi32.lib
 
 include include\constants.inc
 include include\structures.inc
-include include\resource.inc
+include include\resources.inc
 
 include src\window\window.inc
 include src\ui\header.inc      ; Incluir el header.inc
