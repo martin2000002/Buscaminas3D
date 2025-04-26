@@ -18,7 +18,8 @@ include include\resource.inc
 
 include src\window\window.inc
 include src\ui\header.inc      ; Incluir el header.inc
-include src\ui\grid.inc        ; Incluir el nuevo grid.inc
+include src\ui\grid.inc        ; Incluir el grid.inc
+include src\game\game.inc      ; Incluir el game.inc
 
 ; Declaramos las variables externas definidas en main.asm
 EXTERN ClassName:BYTE
@@ -83,6 +84,9 @@ InitApp proc hInst:HINSTANCE
     mov gameState.flagsPlaced, 0
     mov gameState.cellsRevealed, 0
     
+    ; Inicializar la lógica del juego
+    invoke InitGame
+    
     ret
 InitApp endp
 
@@ -119,6 +123,8 @@ RegisterWinClass endp
 WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
     LOCAL ps:PAINTSTRUCT
     LOCAL hdc:HDC
+    LOCAL xPos:DWORD
+    LOCAL yPos:DWORD
     
     .if uMsg == WM_CREATE
         ; Inicializaciones adicionales al crear la ventana
@@ -128,6 +134,32 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         .if ax == IDM_EXIT
             invoke DestroyWindow, hWnd
         .endif
+        
+    .elseif uMsg == WM_LBUTTONDOWN
+        ; Obtener posición del clic
+        mov eax, lParam
+        and eax, 0FFFFh     ; Coordenada X (los 16 bits inferiores)
+        mov xPos, eax
+        
+        mov eax, lParam
+        shr eax, 16         ; Coordenada Y (los 16 bits superiores)
+        mov yPos, eax
+        
+        ; Procesar clic izquierdo
+        invoke HandleGridClick, hWnd, xPos, yPos, 1
+        
+    .elseif uMsg == WM_RBUTTONDOWN
+        ; Obtener posición del clic
+        mov eax, lParam
+        and eax, 0FFFFh     ; Coordenada X (los 16 bits inferiores)
+        mov xPos, eax
+        
+        mov eax, lParam
+        shr eax, 16         ; Coordenada Y (los 16 bits superiores)
+        mov yPos, eax
+        
+        ; Procesar clic derecho
+        invoke HandleGridClick, hWnd, xPos, yPos, 0
         
     .elseif uMsg == WM_PAINT
         invoke BeginPaint, hWnd, addr ps

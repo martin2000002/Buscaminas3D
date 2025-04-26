@@ -2,33 +2,20 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "clean",
+            "label": "assemble - actual",
             "type": "shell",
-            "command": "Remove-Item -Force -Path obj\\*, bin\\*",
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            }
-        },
-        {
-            "label": "assemble-all",
-            "type": "shell",
-            "command": "Get-ChildItem -Path src\\*.asm | ForEach-Object { ml /c /coff /Cp /Fo obj\\$($_.BaseName).obj $_.FullName }",
-            "problemMatcher": [
-                {
-                    "owner": "masm",
-                    "fileLocation": ["relative", "${workspaceFolder}"],
-                    "pattern": {
-                        "regexp": "^(.*)\\((\\d+)\\):\\s+(error|warning)\\s+([A-Z]+\\d+):\\s+(.*)$",
-                        "file": 1,
-                        "line": 2,
-                        "severity": 3,
-                        "code": 4,
-                        "message": 5
-                    }
-                }
+            "command": "ml",
+            "args": [
+                "/c",
+                "/coff",
+                "/I", ".",
+                "/Fo", "build\\${fileBasenameNoExtension}.obj",
+                "${file}"
             ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -37,26 +24,21 @@
         {
             "label": "link",
             "type": "shell",
-            "command": "link /OUT:bin\\Buscaminas3D.exe obj\\main.obj",
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "dependsOn": ["assemble"]
-        },
-        {
-            "label": "build",
-            "type": "shell",
-            "command": "echo Building...",
-            "problemMatcher": [],
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy", "Bypass",
+                "-Command", "link /subsystem:windows (Get-ChildItem -Path 'build/' -Filter '*.obj' | ForEach-Object { $_.FullName }) (Get-ChildItem -Path 'build/' -Filter '*.res' | ForEach-Object { $_.FullName }) /OUT:bin/Buscaminas3D.exe"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "dependsOrder": "sequence",
-            "dependsOn": ["clean", "assemble", "link"]
-        },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },   
         {
             "label": "run",
             "type": "shell",
@@ -64,8 +46,7 @@
             "group": {
                 "kind": "test",
                 "isDefault": false
-            },
-            "dependsOn": ["build"]
+            }
         }
     ]
 }

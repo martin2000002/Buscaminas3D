@@ -14,6 +14,7 @@ includelib \masm32\lib\gdi32.lib
 include include\constants.inc
 include include\structures.inc
 include src\ui\grid.inc
+include src\game\game.inc  ; Incluir el módulo de lógica de juego
 
 ; Variables externas definidas en main.asm
 EXTERN gameState:GameState
@@ -23,11 +24,26 @@ EXTERN gameState:GameState
 GRID_CELLS          EQU 4           ; Número de celdas por lado (4x4)
 GRID_COLOR          EQU 00000000h   ; Color de las líneas del grid (negro)
 CELL_COLOR          EQU 00D3D3D3h   ; Color de fondo de las celdas (gris claro)
+CELL_COLOR_CLICKED  EQU 0000FF00h   ; Color cuando se hace clic (verde)
+CELL_COLOR_FLAGGED  EQU 000000FFh   ; Color cuando tiene bandera (rojo)
 
 ; Constantes definidas como porcentajes (multiplicadas por 100 para evitar decimales)
 HORIZONTAL_MARGIN   EQU 5           ; 5% del ancho disponible entre cada grid
 VERTICAL_MARGIN     EQU 15          ; 15% del alto disponible como margen vertical
 CELL_PADDING_PCT    EQU 5           ; 5% del tamaño de la celda como padding
+
+; Variables globales para la geometría del grid
+gridGeometry STRUCT
+    gridSize              DWORD ?   ; Tamaño de cada grid
+    cellWidth             DWORD ?   ; Ancho de cada celda
+    cellHeight            DWORD ?   ; Alto de cada celda
+    startX                DWORD ?   ; Posición X inicial
+    startY                DWORD ?   ; Posición Y inicial
+    horizontalMarginPixels DWORD ?  ; Margen horizontal en píxeles
+    topAreaHeight         DWORD ?   ; Altura del área superior (header)
+gridGeometry ENDS
+
+currentGeometry gridGeometry <>
 
 .code
 
@@ -39,18 +55,10 @@ CELL_PADDING_PCT    EQU 5           ; 5% del tamaño de la celda como padding
 ;-----------------------------------------------------------------------------
 DrawGrids proc hWnd:HWND, hdc:HDC
     LOCAL rect:RECT
-    LOCAL topAreaHeight:DWORD
     LOCAL availableHeight:DWORD
     LOCAL availableWidth:DWORD
-    LOCAL gridSize:DWORD
-    LOCAL horizontalGridSize:DWORD
-    LOCAL verticalGridSize:DWORD
-    LOCAL startX:DWORD
-    LOCAL startY:DWORD
     LOCAL i:DWORD
     LOCAL currentX:DWORD
-    LOCAL horizontalMarginPixels:DWORD
-    LOCAL verticalMarginPixels:DWORD
     
     ; Obtener dimensiones de la ventana
     invoke GetClientRect, hWnd, addr rect
@@ -60,11 +68,11 @@ DrawGrids proc hWnd:HWND, hdc:HDC
     mov ebx, 10              ; Dividir por 10 para obtener el 10%
     xor edx, edx             ; Limpiar EDX para la división
     div ebx
-    mov topAreaHeight, eax   ; Guardar altura del área superior
+    mov currentGeometry.topAreaHeight, eax   ; Guardar altura del área superior
     
     ; Calcular el espacio disponible para los grids
     mov eax, rect.bottom
-    sub eax, topAreaHeight
+    sub eax, currentGeometry.topAreaHeight
     mov availableHeight, eax  ; Altura disponible
     
     mov eax, rect.right      ; Usar eax como intermediario
@@ -76,18 +84,19 @@ DrawGrids proc hWnd:HWND, hdc:HDC
     mul ebx
     mov ebx, 100
     div ebx
-    mov horizontalMarginPixels, eax
+    mov currentGeometry.horizontalMarginPixels, eax
     
     mov eax, availableHeight
     mov ebx, VERTICAL_MARGIN
     mul ebx
     mov ebx, 100
     div ebx
-    mov verticalMarginPixels, eax
+    ; Guardar verticalMarginPixels para uso local
+    mov edx, eax
     
     ; Calcular el tamaño del grid basado en el margen horizontal:
     ; gridSize = (anchoPantalla * (1 - 5 * MARGENHORIZONTAL)) / 4
-    mov eax, horizontalMarginPixels
+    mov eax, currentGeometry.horizontalMarginPixels
     mov ebx, 5
     mul ebx
     ; eax = 5 * horizontalMarginPixels
@@ -101,11 +110,12 @@ DrawGrids proc hWnd:HWND, hdc:HDC
     div ebx
     ; eax = (availableWidth - 5 * horizontalMarginPixels) / 4
     
-    mov horizontalGridSize, eax
+    ; Guardar horizontalGridSize para uso local
+    mov ecx, eax
     
     ; Calcular el tamaño del grid basado en el margen vertical:
     ; gridSize = altoPantalla * (1 - 2 * MARGENVERTICAL)
-    mov eax, verticalMarginPixels
+    mov eax, edx  ; Restaurar verticalMarginPixels
     mov ebx, 2
     mul ebx
     ; eax = 2 * verticalMarginPixels
@@ -114,24 +124,33 @@ DrawGrids proc hWnd:HWND, hdc:HDC
     sub ebx, eax
     ; ebx = availableHeight - 2 * verticalMarginPixels
     
-    mov verticalGridSize, ebx
+    ; Guardar verticalGridSize para uso local
+    mov edx, ebx
     
     ; Elegir el menor de los dos tamaños
-    mov eax, horizontalGridSize
-    .if eax <= verticalGridSize
-        mov gridSize, eax
+    mov eax, ecx  ; Restaurar horizontalGridSize
+    .if eax <= edx    ; Comparar con verticalGridSize
+        mov currentGeometry.gridSize, eax
     .else
-        mov eax, verticalGridSize
-        mov gridSize, eax
+        mov eax, edx  ; Usar verticalGridSize
+        mov currentGeometry.gridSize, eax
     .endif
     
+    ; Calcular tamaño de celda
+    mov eax, currentGeometry.gridSize
+    mov ebx, GRID_CELLS
+    xor edx, edx
+    div ebx
+    mov currentGeometry.cellWidth, eax
+    mov currentGeometry.cellHeight, eax
+    
     ; Calcular posición inicial X (para centrar horizontalmente)
-    mov eax, gridSize
+    mov eax, currentGeometry.gridSize
     mov ebx, 4
     mul ebx
     ; eax = gridSize * 4
     
-    mov ebx, horizontalMarginPixels
+    mov ebx, currentGeometry.horizontalMarginPixels
     imul ebx, 5
     add eax, ebx
     ; eax = gridSize * 4 + horizontalMarginPixels * 5
@@ -142,30 +161,30 @@ DrawGrids proc hWnd:HWND, hdc:HDC
     ; ebx = (availableWidth - (gridSize * 4 + horizontalMarginPixels * 5)) / 2
     
     mov eax, ebx
-    add eax, horizontalMarginPixels
+    add eax, currentGeometry.horizontalMarginPixels
     ; eax = (availableWidth - (gridSize * 4 + horizontalMarginPixels * 5)) / 2 + horizontalMarginPixels
     
-    mov startX, eax
+    mov currentGeometry.startX, eax
     
     ; Calcular posición inicial Y (para centrar verticalmente)
     mov eax, availableHeight
-    sub eax, gridSize
+    sub eax, currentGeometry.gridSize
     shr eax, 1
-    add eax, topAreaHeight
-    mov startY, eax
+    add eax, currentGeometry.topAreaHeight
+    mov currentGeometry.startY, eax
     
     ; Dibujar los 4 grids
     mov i, 0
-    mov eax, startX
+    mov eax, currentGeometry.startX
     mov currentX, eax
     
     .while i < 4
-        invoke DrawSingleGrid, hdc, currentX, startY, gridSize, gridSize
+        invoke DrawSingleGrid, hdc, currentX, currentGeometry.startY, currentGeometry.gridSize, currentGeometry.gridSize, i
         
         ; Avanzar a la siguiente posición X
         mov eax, currentX
-        add eax, gridSize
-        add eax, horizontalMarginPixels
+        add eax, currentGeometry.gridSize
+        add eax, currentGeometry.horizontalMarginPixels
         mov currentX, eax
         
         ; Incrementar contador
@@ -181,10 +200,9 @@ DrawGrids endp
 ;   hdc - Contexto de dispositivo
 ;   x, y - Coordenadas de la esquina superior izquierda
 ;   gridWidth, gridHeight - Dimensiones del grid
+;   gridIndex - Índice del grid (0-3)
 ;-----------------------------------------------------------------------------
-DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
-    LOCAL cellWidth:DWORD
-    LOCAL cellHeight:DWORD
+DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD, gridIndex:DWORD
     LOCAL cellPadding:DWORD
     LOCAL row:DWORD
     LOCAL col:DWORD
@@ -195,22 +213,10 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     LOCAL hOldPen:HPEN
     LOCAL hOldBrush:HBRUSH
     LOCAL rect:RECT
-    
-    ; Calcular dimensiones de cada celda
-    mov eax, gridWidth
-    mov ebx, GRID_CELLS
-    xor edx, edx
-    div ebx
-    mov cellWidth, eax
-    
-    mov eax, gridHeight
-    mov ebx, GRID_CELLS
-    xor edx, edx
-    div ebx
-    mov cellHeight, eax
+    LOCAL cellData:Cell      ; Para almacenar el estado de cada celda
     
     ; Calcular el padding de celda basado en el porcentaje
-    mov eax, cellWidth
+    mov eax, currentGeometry.cellWidth
     mov ebx, CELL_PADDING_PCT
     mul ebx
     mov ebx, 100
@@ -222,33 +228,30 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
         mov cellPadding, 1
     .endif
     
-    ; Crear pluma y pincel
+    ; Crear pluma
     invoke CreatePen, PS_SOLID, 1, GRID_COLOR
     mov hPen, eax
     
-    invoke CreateSolidBrush, CELL_COLOR
-    mov hBrush, eax
-    
-    ; Seleccionar objetos en el DC
+    ; Seleccionar pluma en el DC
     invoke SelectObject, hdc, hPen
     mov hOldPen, eax
-    
-    invoke SelectObject, hdc, hBrush
-    mov hOldBrush, eax
     
     ; Dibujar cada celda del grid
     mov row, 0
     .while row < GRID_CELLS
         mov col, 0
         .while col < GRID_CELLS
+            ; Obtener estado de la celda
+            invoke GetCellState, gridIndex, col, row, addr cellData
+            
             ; Calcular posición de la celda
             mov eax, col
-            mul cellWidth
+            mul currentGeometry.cellWidth
             add eax, x
             mov cellX, eax
             
             mov eax, row
-            mul cellHeight
+            mul currentGeometry.cellHeight
             add eax, y
             mov cellY, eax
             
@@ -262,32 +265,201 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
             mov rect.top, eax
             
             mov eax, cellX
-            add eax, cellWidth
+            add eax, currentGeometry.cellWidth
             sub eax, cellPadding
             mov rect.right, eax
             
             mov eax, cellY
-            add eax, cellHeight
+            add eax, currentGeometry.cellHeight
             sub eax, cellPadding
             mov rect.bottom, eax
             
+            ; Determinar el color según el estado de la celda
+            mov al, cellData.isRevealed
+            .if al != 0
+                ; Celda revelada
+                invoke CreateSolidBrush, CELL_COLOR_CLICKED
+            .else
+                mov al, cellData.isFlagged
+                .if al != 0
+                    ; Celda con bandera
+                    invoke CreateSolidBrush, CELL_COLOR_FLAGGED
+                .else
+                    ; Celda normal
+                    invoke CreateSolidBrush, CELL_COLOR
+                .endif
+            .endif
+            mov hBrush, eax
+            
+            ; Seleccionar pincel
+            invoke SelectObject, hdc, hBrush
+            mov hOldBrush, eax
+            
             ; Dibujar la celda
             invoke Rectangle, hdc, rect.left, rect.top, rect.right, rect.bottom
+            
+            ; Restaurar pincel original y liberar el creado
+            invoke SelectObject, hdc, hOldBrush
+            invoke DeleteObject, hBrush
             
             inc col
         .endw
         inc row
     .endw
     
-    ; Restaurar objetos originales
+    ; Restaurar pluma original
     invoke SelectObject, hdc, hOldPen
-    invoke SelectObject, hdc, hOldBrush
     
     ; Liberar recursos
     invoke DeleteObject, hPen
-    invoke DeleteObject, hBrush
     
     ret
 DrawSingleGrid endp
+
+
+;-----------------------------------------------------------------------------
+; HandleGridClick - Maneja un clic en el área del grid
+; Parámetros:
+;   hWnd - Handle de la ventana
+;   x, y - Coordenadas del clic en la ventana
+;   leftClick - 1 si es clic izquierdo, 0 si es clic derecho
+; Retorna:
+;   eax - 1 si el clic fue procesado, 0 si no
+;-----------------------------------------------------------------------------
+HandleGridClick proc hWnd:HWND, x:DWORD, y:DWORD, leftClick:DWORD
+    LOCAL gridIndex:DWORD
+    LOCAL cellX:DWORD
+    LOCAL cellY:DWORD
+    LOCAL currentGridX:DWORD
+    LOCAL gridWidth:DWORD
+    LOCAL clickX:DWORD
+    LOCAL clickY:DWORD
+    
+    ; Verificar si el clic está en el área de juego
+    mov eax, y
+    mov ecx, currentGeometry.topAreaHeight
+    .if eax < ecx
+        xor eax, eax    ; Retornar 0 (fuera del área)
+        ret
+    .endif
+    
+    mov eax, currentGeometry.startY
+    add eax, currentGeometry.gridSize
+    mov ecx, y
+    .if ecx > eax
+        xor eax, eax    ; Retornar 0 (fuera del área)
+        ret
+    .endif
+    
+    mov eax, x
+    mov ecx, currentGeometry.startX
+    .if eax < ecx
+        xor eax, eax    ; Retornar 0 (fuera del área)
+        ret
+    .endif
+    
+    ; Obtener el ancho total de los 4 grids con márgenes
+    mov eax, currentGeometry.startX
+    add eax, currentGeometry.gridSize
+    add eax, currentGeometry.horizontalMarginPixels
+    add eax, currentGeometry.gridSize
+    add eax, currentGeometry.horizontalMarginPixels
+    add eax, currentGeometry.gridSize
+    add eax, currentGeometry.horizontalMarginPixels
+    add eax, currentGeometry.gridSize
+    
+    mov ecx, x
+    .if ecx > eax
+        xor eax, eax    ; Retornar 0 (fuera del área)
+        ret
+    .endif
+    
+    ; Calcular posición Y relativa a la parte superior del área de juego
+    mov eax, y
+    sub eax, currentGeometry.startY
+    mov clickY, eax
+    
+    ; Dividir por la altura de la celda para obtener cellY
+    mov eax, clickY
+    mov ecx, currentGeometry.cellHeight
+    xor edx, edx
+    div ecx
+    mov cellY, eax
+    
+    ; Validar cellY
+    mov eax, cellY
+    .if eax >= 4
+        xor eax, eax    ; Fuera del rango válido
+        ret
+    .endif
+    
+    ; Para determinar el grid y la celda X, recorremos los 4 grids
+    mov gridIndex, 0
+    mov eax, currentGeometry.startX
+    mov currentGridX, eax
+    
+    ; Calcular cuánto mide un grid (tamaño del grid + margen)
+    mov eax, currentGeometry.gridSize
+    add eax, currentGeometry.horizontalMarginPixels
+    mov gridWidth, eax
+    
+    ; Comprobar cada grid
+    .while gridIndex < 4
+        ; Comprobar si X está dentro de este grid
+        mov eax, x
+        mov ecx, currentGridX
+        .if eax >= ecx
+            mov eax, currentGridX
+            add eax, currentGeometry.gridSize
+            mov ecx, x
+            .if ecx < eax
+                ; El clic está en este grid
+                
+                ; Calcular la coordenada X relativa a este grid
+                mov eax, x
+                sub eax, currentGridX
+                mov clickX, eax
+                
+                ; Dividir por el ancho de la celda para obtener cellX
+                mov eax, clickX
+                mov ecx, currentGeometry.cellWidth
+                xor edx, edx
+                div ecx
+                mov cellX, eax
+                
+                ; Validar cellX
+                mov eax, cellX
+                .if eax >= 4
+                    xor eax, eax    ; Fuera del rango válido
+                    ret
+                .endif
+                
+                ; Procesar el clic en la celda
+                invoke ProcessCellClick, gridIndex, cellX, cellY, leftClick
+                
+                ; Si se realizó algún cambio, invalidar la ventana para repintar
+                .if eax != 0
+                    invoke InvalidateRect, hWnd, NULL, TRUE
+                .endif
+                
+                ; Clic procesado
+                mov eax, 1
+                ret
+            .endif
+        .endif
+        
+        ; Pasar al siguiente grid
+        mov eax, currentGridX
+        add eax, gridWidth
+        mov currentGridX, eax
+        
+        ; Incrementar índice
+        inc gridIndex
+    .endw
+    
+    ; Si llegamos aquí, el clic no está en ningún grid
+    xor eax, eax
+    ret
+HandleGridClick endp
 
 end
