@@ -26,8 +26,6 @@ GRID_CELLS          EQU 4           ; Número de celdas por lado (4x4)
 GRID_COLOR          EQU 00000000h   ; Color de las líneas del grid (negro)
 CELL_COLOR          EQU 00D3D3D3h   ; Color de fondo de las celdas (gris claro)
 CELL_COLOR_CLICKED  EQU 0000FF00h   ; Color cuando se hace clic (verde)
-CELL_COLOR_FLAGGED  EQU 000000FFh   ; Color cuando tiene bandera (rojo)
-MINE_COLOR          EQU 00000000h   ; Color para las minas (negro)
 
 ; Constantes definidas como porcentajes (multiplicadas por 100 para evitar decimales)
 HORIZONTAL_MARGIN   EQU 5           ; 5% del ancho disponible entre cada grid

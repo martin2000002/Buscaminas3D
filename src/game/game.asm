@@ -19,11 +19,6 @@ include src\game\game.inc
 EXTERN gameState:GameState
 
 .data
-; Colores para las celdas
-CELL_COLOR_NORMAL    EQU 00D3D3D3h   ; Color normal (gris claro)
-CELL_COLOR_CLICKED   EQU 0000FF00h   ; Color cuando se hace clic (verde)
-CELL_COLOR_FLAGGED   EQU 000000FFh   ; Color cuando tiene bandera (rojo)
-CELL_COLOR_MINE      EQU 00000000h   ; Color para las minas (negro)
 
 ; Variables para generación aleatoria
 seed DWORD 12345       ; Semilla para generación de números aleatorios
