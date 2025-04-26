@@ -53,6 +53,178 @@ Random proc
 Random endp
 
 ;-----------------------------------------------------------------------------
+; CalculateAdjacentMines - Calcula el número de minas adyacentes para una celda
+; Parámetros:
+;   gridIndex - Índice de la cara (0-3)
+;   cellX - Coordenada X de la celda (0-3)
+;   cellY - Coordenada Y de la celda (0-3)
+; Retorna:
+;   eax - Número de minas adyacentes
+;-----------------------------------------------------------------------------
+CalculateAdjacentMines proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
+    LOCAL mineCount:BYTE
+    LOCAL iAnalisis:DWORD
+    LOCAL jAnalisis:DWORD
+    LOCAL kAnalisis:DWORD
+    LOCAL iAnalisisInicial:DWORD
+    LOCAL jAnalisisInicial:DWORD
+    LOCAL kAnalisisInicial:DWORD
+    LOCAL iAnalisisFinal:DWORD
+    LOCAL jAnalisisFinal:DWORD
+    LOCAL kAnalisisFinal:DWORD
+    LOCAL adjacentCellOffset:DWORD
+    LOCAL hasMine:BYTE
+    
+    ; Inicializar contador de minas
+    mov mineCount, 0
+    
+    ; Calcular los límites de análisis para i (gridIndex)
+    mov eax, gridIndex
+    .if eax == 0
+        mov iAnalisisInicial, 0
+    .else
+        mov eax, gridIndex
+        dec eax
+        mov iAnalisisInicial, eax
+    .endif
+    
+    mov eax, gridIndex
+    inc eax
+    .if eax >= 4     ; Solo analizamos hasta 3 (las primeras 4 caras)
+        mov iAnalisisFinal, 3
+    .else
+        mov iAnalisisFinal, eax
+    .endif
+    
+    ; Recorrer las celdas adyacentes (incluyendo diagonales)
+    mov eax, iAnalisisInicial
+    mov iAnalisis, eax
+    
+    i_loop:
+        mov eax, iAnalisis
+        cmp eax, iAnalisisFinal
+        jg end_i_loop      ; Salir si iAnalisis > iAnalisisFinal
+        
+        ; Calcular los límites de análisis para j (y)
+        mov eax, cellY
+        .if eax == 0
+            mov jAnalisisInicial, 0
+        .else
+            mov eax, cellY
+            dec eax
+            mov jAnalisisInicial, eax
+        .endif
+        
+        mov eax, cellY
+        inc eax
+        .if eax >= 4
+            mov jAnalisisFinal, 3
+        .else
+            mov jAnalisisFinal, eax
+        .endif
+        
+        mov eax, jAnalisisInicial
+        mov jAnalisis, eax
+        
+        j_loop:
+            mov eax, jAnalisis
+            cmp eax, jAnalisisFinal
+            jg end_j_loop  ; Salir si jAnalisis > jAnalisisFinal
+            
+            ; Calcular los límites de análisis para k (x)
+            mov eax, cellX
+            .if eax == 0
+                mov kAnalisisInicial, 0
+            .else
+                mov eax, cellX
+                dec eax
+                mov kAnalisisInicial, eax
+            .endif
+            
+            mov eax, cellX
+            inc eax
+            .if eax >= 4
+                mov kAnalisisFinal, 3
+            .else
+                mov kAnalisisFinal, eax
+            .endif
+            
+            mov eax, kAnalisisInicial
+            mov kAnalisis, eax
+            
+            k_loop:
+                mov eax, kAnalisis
+                cmp eax, kAnalisisFinal
+                jg end_k_loop  ; Salir si kAnalisis > kAnalisisFinal
+                
+                ; Si es la celda actual, saltarla
+                mov eax, iAnalisis
+                .if eax == gridIndex
+                    mov eax, jAnalisis
+                    .if eax == cellY
+                        mov eax, kAnalisis
+                        .if eax == cellX
+                            ; Es la celda central, saltarla
+                            jmp nextCell
+                        .endif
+                    .endif
+                .endif
+                
+                ; Calcular offset de la celda adyacente
+                ; offset = (iAnalisis * 4 * 4 + jAnalisis * 4 + kAnalisis) * 4
+                mov eax, iAnalisis
+                mov ebx, 16    ; 4 * 4
+                mul ebx
+                mov adjacentCellOffset, eax
+                
+                mov eax, jAnalisis
+                mov ebx, 4
+                mul ebx
+                add adjacentCellOffset, eax
+                
+                mov eax, kAnalisis
+                add adjacentCellOffset, eax
+                
+                ; Multiplicar por 4 (tamaño de cada elemento)
+                mov eax, adjacentCellOffset
+                shl eax, 2    ; Multiplicar por 4
+                mov adjacentCellOffset, eax
+                
+                ; Verificar si esta celda adyacente tiene mina
+                mov ebx, offset cellStates
+                add ebx, adjacentCellOffset
+                
+                ; hasMine = cellStates[offset]
+                mov al, byte ptr [ebx]
+                mov hasMine, al
+                
+                ; Si tiene mina, incrementar contador
+                .if hasMine != 0
+                    inc mineCount
+                .endif
+                
+                nextCell:
+                    inc kAnalisis
+                    jmp k_loop
+                    
+            end_k_loop:
+            
+            inc jAnalisis
+            jmp j_loop
+            
+        end_j_loop:
+        
+        inc iAnalisis
+        jmp i_loop
+        
+    end_i_loop:
+    
+    ; Retornar el número de minas adyacentes
+    movzx eax, mineCount
+    ret
+CalculateAdjacentMines endp
+
+;-----------------------------------------------------------------------------
 ; InitGame - Inicializa el estado del juego
 ;-----------------------------------------------------------------------------
 InitGame proc
@@ -65,6 +237,7 @@ InitGame proc
     LOCAL cellX:DWORD
     LOCAL cellY:DWORD
     LOCAL totalCells:DWORD
+    LOCAL mineCount:BYTE
     
     ; Inicializar todas las celdas
     mov i, 0
@@ -182,6 +355,56 @@ InitGame proc
             mov byte ptr [ebx], 1
             dec minesLeft
         .endif
+    .endw
+    
+    ; Calcular el número de minas adyacentes para cada celda
+    mov i, 0
+    .while i < 4    ; Para cada cara (solo 4 primeras caras)
+        mov j, 0
+        .while j < 4    ; Para cada fila
+            mov k, 0
+            .while k < 4    ; Para cada columna
+                ; Calcular offset en el array de celdas
+                ; offset = (i * 4 * 4 + j * 4 + k) * 4
+                mov eax, i
+                mov ebx, 16    ; 4 * 4
+                mul ebx
+                mov cellOffset, eax
+                
+                mov eax, j
+                mov ebx, 4
+                mul ebx
+                add cellOffset, eax
+                
+                mov ecx, k
+                add cellOffset, ecx
+                
+                ; Multiplicar por 4 (tamaño de cada elemento)
+                mov eax, cellOffset
+                shl eax, 2    ; Multiplicar por 4
+                mov cellOffset, eax
+                
+                ; Obtener puntero a la celda
+                mov ebx, offset cellStates
+                add ebx, cellOffset
+                
+                ; Si la celda no tiene mina, calcular minas adyacentes
+                mov al, byte ptr [ebx]    ; hasMine
+                .if al == 0
+                    ; Calcular minas adyacentes
+                    invoke CalculateAdjacentMines, i, k, j
+                    mov mineCount, al
+                    
+                    ; Guardar el valor en la estructura
+                    mov byte ptr [ebx+3], al
+                    
+                .endif
+                
+                inc k
+            .endw
+            inc j
+        .endw
+        inc i
     .endw
     
     ; Inicializar el estado del juego
