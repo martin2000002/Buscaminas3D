@@ -19,12 +19,19 @@ include src\game\game.inc
 EXTERN gameState:GameState
 
 .data
+lastCalculatedMines BYTE 0  ; Variable global para almacenar el último valor calculado
+
+debugWriteStr db "ESCRITURA: cara=%d, y=%d, x=%d, offset=%d, valor=%d", 0
+debugReadStr db "LECTURA: cara=%d, y=%d, x=%d, offset=%d, valor=%d", 0
+debugCalcStr db "CALCULO: cara=%d, y=%d, x=%d, resultado=%d", 0
+buffer db 256 dup(?)
 
 ; Variables para generación aleatoria
 seed DWORD 12345       ; Semilla para generación de números aleatorios
 
 .data?
-cellStates BYTE 6 * 4 * 4 * 4 dup(?)  ; Estado de cada celda (hasMine, isRevealed, isFlagged, adjacentMines)
+; Nuevo arreglo basado en la estructura
+cellStates Cell 6 * 4 * 4 dup(<>)  ; 6 caras * 4x4 celdas por cara
 
 .code
 
@@ -56,7 +63,7 @@ Random endp
 ; Retorna:
 ;   eax - Número de minas adyacentes
 ;-----------------------------------------------------------------------------
-CalculateAdjacentMines proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
+CalculateAdjacentMines proc gridIndex:DWORD, cellY:DWORD, cellX:DWORD
     LOCAL mineCount:BYTE
     LOCAL iAnalisis:DWORD
     LOCAL jAnalisis:DWORD
@@ -68,6 +75,7 @@ CalculateAdjacentMines proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
     LOCAL jAnalisisFinal:DWORD
     LOCAL kAnalisisFinal:DWORD
     LOCAL adjacentCellOffset:DWORD
+    LOCAL adjacentCellPtr:DWORD
     LOCAL hasMine:BYTE
     
     ; Inicializar contador de minas
@@ -166,31 +174,30 @@ CalculateAdjacentMines proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
                 .endif
                 
                 ; Calcular offset de la celda adyacente
-                ; offset = (iAnalisis * 4 * 4 + jAnalisis * 4 + kAnalisis) * 4
+                ; Nuevo cálculo del offset usando tamaño de estructura
                 mov eax, iAnalisis
-                mov ebx, 16    ; 4 * 4
+                imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+                
+                mov ebx, jAnalisis
+                imul ebx, 4           ; cellY * columnas por fila
+                add eax, ebx
+                
+                add eax, kAnalisis    ; + cellX
+                
+                ; Multiplicar por el tamaño de la estructura Cell (4 bytes)
+                mov ebx, TYPE Cell
                 mul ebx
                 mov adjacentCellOffset, eax
                 
-                mov eax, jAnalisis
-                mov ebx, 4
-                mul ebx
-                add adjacentCellOffset, eax
-                
-                mov eax, kAnalisis
-                add adjacentCellOffset, eax
-                
-                ; Multiplicar por 4 (tamaño de cada elemento)
-                mov eax, adjacentCellOffset
-                shl eax, 2    ; Multiplicar por 4
-                mov adjacentCellOffset, eax
+                ; Obtener puntero a la celda adyacente
+                lea ebx, cellStates
+                add ebx, adjacentCellOffset
+                mov adjacentCellPtr, ebx
                 
                 ; Verificar si esta celda adyacente tiene mina
-                mov ebx, offset cellStates
-                add ebx, adjacentCellOffset
-                
-                ; hasMine = cellStates[offset]
-                mov al, byte ptr [ebx]
+                mov ebx, adjacentCellPtr
+                ; hasMine = cellStates[offset].hasMine
+                mov al, (Cell PTR [ebx]).hasMine
                 mov hasMine, al
                 
                 ; Si tiene mina, incrementar contador
@@ -215,7 +222,8 @@ CalculateAdjacentMines proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
     end_i_loop:
     
     ; Retornar el número de minas adyacentes
-    movzx eax, mineCount
+    mov cl, mineCount
+    mov lastCalculatedMines, cl  ; Guardar en variable global
     ret
 CalculateAdjacentMines endp
 
@@ -227,12 +235,14 @@ InitGame proc
     LOCAL j:DWORD
     LOCAL k:DWORD
     LOCAL cellOffset:DWORD
+    LOCAL cellPtr:DWORD
     LOCAL minesLeft:DWORD
     LOCAL gridIndex:DWORD
     LOCAL cellX:DWORD
     LOCAL cellY:DWORD
     LOCAL totalCells:DWORD
-    LOCAL mineCount:BYTE
+    ; depuracion
+    LOCAL adyacentMines:DWORD
     
     ; Inicializar todas las celdas
     mov i, 0
@@ -242,40 +252,40 @@ InitGame proc
             mov k, 0
             .while k < 4    ; Para cada columna (cellX)
                 ; Calcular offset en el array de celdas
-                ; offset = (i * 4 * 4 + j * 4 + k) * 4
+                ; Nuevo cálculo del offset usando tamaño de estructura
                 mov eax, i
-                mov ebx, 16    ; 4 * 4
+                imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+                
+                mov ebx, j
+                imul ebx, 4           ; cellY * columnas por fila
+                add eax, ebx
+                
+                add eax, k            ; + cellX
+                
+                ; Multiplicar por el tamaño de la estructura Cell (4 bytes)
+                mov ebx, TYPE Cell
                 mul ebx
                 mov cellOffset, eax
                 
-                mov eax, j
-                mov ebx, 4
-                mul ebx
-                add cellOffset, eax
-                
-                mov ecx, k
-                add cellOffset, ecx
-                
-                ; Multiplicar por 4 (tamaño de cada elemento)
-                mov eax, cellOffset
-                shl eax, 2    ; Multiplicar por 4
-                mov cellOffset, eax
+                ; Obtener puntero a la celda
+                lea ebx, cellStates
+                add ebx, cellOffset
+                mov cellPtr, ebx
                 
                 ; Inicializar los valores
-                mov ebx, offset cellStates
-                add ebx, cellOffset
+                mov ebx, cellPtr
                 
                 ; hasMine = 0
-                mov byte ptr [ebx], 0
+                mov (Cell PTR [ebx]).hasMine, 0
                 
                 ; isRevealed = 0
-                mov byte ptr [ebx+1], 0
+                mov (Cell PTR [ebx]).isRevealed, 0
                 
                 ; isFlagged = 0
-                mov byte ptr [ebx+2], 0
+                mov (Cell PTR [ebx]).isFlagged, 0
                 
                 ; adjacentMines = 0
-                mov byte ptr [ebx+3], 0
+                mov (Cell PTR [ebx]).adjacentMines, 0
                 
                 inc k
             .endw
@@ -322,32 +332,34 @@ InitGame proc
         mov cellY, edx
         
         ; Calcular offset de la celda
+        ; Nuevo cálculo del offset usando tamaño de estructura
         mov eax, gridIndex
-        mov ebx, 16    ; 4 * 4
+        imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+        
+        mov ebx, cellY
+        imul ebx, 4           ; cellY * columnas por fila
+        add eax, ebx
+        
+        add eax, cellX        ; + cellX
+        
+        ; Multiplicar por el tamaño de la estructura Cell (4 bytes)
+        mov ebx, TYPE Cell
         mul ebx
         mov cellOffset, eax
         
-        mov eax, cellY
-        mov ebx, 4
-        mul ebx
-        add cellOffset, eax
-        
-        mov ecx, cellX
-        add cellOffset, ecx
-        
-        ; Multiplicar por 4 (tamaño de cada elemento)
-        mov eax, cellOffset
-        shl eax, 2    ; Multiplicar por 4
-        mov cellOffset, eax
+        ; Obtener puntero a la celda
+        lea ebx, cellStates
+        add ebx, cellOffset
+        mov cellPtr, ebx
         
         ; Verificar si ya hay una mina en esta celda
-        mov ebx, offset cellStates
-        add ebx, cellOffset
+        mov ebx, cellPtr
         
-        mov al, byte ptr [ebx]    ; hasMine
+        ; Verificar hasMine
+        mov al, (Cell PTR [ebx]).hasMine
         .if al == 0
             ; No hay mina, colocar una
-            mov byte ptr [ebx], 1
+            mov (Cell PTR [ebx]).hasMine, 1
             dec minesLeft
         .endif
     .endw
@@ -360,39 +372,59 @@ InitGame proc
             mov k, 0
             .while k < 4    ; Para cada columna
                 ; Calcular offset en el array de celdas
-                ; offset = (i * 4 * 4 + j * 4 + k) * 4
+                ; Nuevo cálculo del offset usando tamaño de estructura
                 mov eax, i
-                mov ebx, 16    ; 4 * 4
+                imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+                
+                mov ebx, j
+                imul ebx, 4           ; cellY * columnas por fila
+                add eax, ebx
+                
+                add eax, k            ; + cellX
+                
+                ; Multiplicar por el tamaño de la estructura Cell (4 bytes)
+                mov ebx, TYPE Cell
                 mul ebx
-                mov cellOffset, eax
-                
-                mov eax, j
-                mov ebx, 4
-                mul ebx
-                add cellOffset, eax
-                
-                mov ecx, k
-                add cellOffset, ecx
-                
-                ; Multiplicar por 4 (tamaño de cada elemento)
-                mov eax, cellOffset
-                shl eax, 2    ; Multiplicar por 4
                 mov cellOffset, eax
                 
                 ; Obtener puntero a la celda
-                mov ebx, offset cellStates
+                lea ebx, cellStates
                 add ebx, cellOffset
+                mov cellPtr, ebx
                 
                 ; Si la celda no tiene mina, calcular minas adyacentes
-                mov al, byte ptr [ebx]    ; hasMine
+                mov ebx, cellPtr
+                mov al, (Cell PTR [ebx]).hasMine
                 .if al == 0
                     ; Calcular minas adyacentes
-                    invoke CalculateAdjacentMines, i, k, j
-                    mov mineCount, al
-                    
+                    invoke CalculateAdjacentMines, i, j, k
+
+                    ; Mostrar el resultado del cálculo para depuración
+                    movzx eax, lastCalculatedMines
+                    mov adyacentMines, eax
+                    invoke wsprintf, ADDR buffer, ADDR debugCalcStr, i, j, k, adyacentMines
+                    invoke OutputDebugString, ADDR buffer
+
                     ; Guardar el valor en la estructura
-                    mov byte ptr [ebx+3], al
+                    mov cl, lastCalculatedMines
+                    mov ebx, cellPtr
+                    mov (Cell PTR [ebx]).adjacentMines, cl
+
+                    ; Verificar si se guardó correctamente
+                    movzx eax, (Cell PTR [ebx]).adjacentMines
+                    mov adyacentMines, eax
+                    invoke wsprintf, ADDR buffer, ADDR debugWriteStr, i, j, k, cellOffset, adyacentMines
+                    invoke OutputDebugString, ADDR buffer
+                .else
+                    ; Si tiene mina, asignar valor especial (1)
+                    mov ebx, cellPtr
+                    mov (Cell PTR [ebx]).adjacentMines, 1
                     
+                    ; ----- DEPURACIÓN: Verificar asignación de valor especial -----
+                    movzx eax, (Cell PTR [ebx]).adjacentMines
+                    mov adyacentMines, eax
+                    invoke wsprintf, ADDR buffer, ADDR debugCalcStr, i, j, k, adyacentMines
+                    invoke OutputDebugString, ADDR buffer
                 .endif
                 
                 inc k
@@ -424,11 +456,18 @@ InitGame endp
 ;-----------------------------------------------------------------------------
 ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     LOCAL cellOffset:DWORD
+    LOCAL cellPtr:DWORD
     LOCAL cellX_val:BYTE
     LOCAL cellY_val:BYTE
     LOCAL isRevealed:BYTE
     LOCAL isFlagged:BYTE
     LOCAL hasMine:BYTE
+    LOCAL adjacentMines:BYTE
+        ; Variables temporales para depuración (DWORD)
+    LOCAL hasMine_dw:DWORD
+    LOCAL isRevealed_dw:DWORD
+    LOCAL isFlagged_dw:DWORD
+    LOCAL adjacentMines_dw:DWORD
     
     ; Validar parámetros
     mov eax, gridIndex
@@ -450,40 +489,51 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     .endif
     
     ; Calcular offset en el array de celdas
-    ; offset = (gridIndex * 4 * 4 + cellY * 4 + cellX) * 4
+    ; Nuevo cálculo del offset usando tamaño de estructura
     mov eax, gridIndex
-    mov ebx, 16    ; 4 * 4
+    imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+    
+    mov ebx, cellY
+    imul ebx, 4           ; cellY * columnas por fila
+    add eax, ebx
+    
+    add eax, cellX        ; + cellX
+    
+    ; Multiplicar por el tamaño de la estructura Cell (4 bytes)
+    mov ebx, TYPE Cell
     mul ebx
     mov cellOffset, eax
     
-    mov eax, cellY
-    mov ebx, 4
-    mul ebx
-    add cellOffset, eax
-    
-    mov ecx, cellX
-    add cellOffset, ecx
-    
-    ; Multiplicar por 4 (tamaño de cada elemento)
-    mov eax, cellOffset
-    shl eax, 2    ; Multiplicar por 4
-    mov cellOffset, eax
+    ; Obtener puntero a la celda
+    lea ebx, cellStates
+    add ebx, cellOffset
+    mov cellPtr, ebx
     
     ; Obtener estado actual de la celda
-    mov ebx, offset cellStates
-    add ebx, cellOffset
+    mov ebx, cellPtr
     
-    ; hasMine = cellStates[offset]
-    mov al, byte ptr [ebx]
+    ; hasMine = cellStates[offset].hasMine
+    mov al, (Cell PTR [ebx]).hasMine
     mov hasMine, al
     
-    ; isRevealed = cellStates[offset+1]
-    mov al, byte ptr [ebx+1]
+    ; isRevealed = cellStates[offset].isRevealed
+    mov al, (Cell PTR [ebx]).isRevealed
     mov isRevealed, al
     
-    ; isFlagged = cellStates[offset+2]
-    mov al, byte ptr [ebx+2]
+    ; isFlagged = cellStates[offset].isFlagged
+    mov al, (Cell PTR [ebx]).isFlagged
     mov isFlagged, al
+
+    ; adjacentMines = cellStates[offset].adjacentMines
+    mov al, (Cell PTR [ebx]).adjacentMines
+    mov adjacentMines, al
+    
+    ; ----- DEPURACIÓN: Verificar si se lee correctamente -----
+    movzx eax, adjacentMines
+    mov adjacentMines_dw, eax
+
+    invoke wsprintf, ADDR buffer, ADDR debugReadStr, gridIndex, cellY, cellX, cellOffset, adjacentMines_dw
+    invoke OutputDebugString, ADDR buffer
     
     ; Si es clic izquierdo
     mov eax, leftClick
@@ -502,7 +552,8 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         .endif
         
         ; Marcar la celda como revelada
-        mov byte ptr [ebx+1], 1
+        mov ebx, cellPtr
+        mov (Cell PTR [ebx]).isRevealed, 1
         
         ; Incrementar el contador de celdas reveladas
         inc gameState.cellsRevealed
@@ -518,13 +569,14 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         
         ; Alternar el estado de la bandera
         mov al, isFlagged
+        mov ebx, cellPtr
         .if al == 0
             ; Colocar bandera
-            mov byte ptr [ebx+2], 1
+            mov (Cell PTR [ebx]).isFlagged, 1
             inc gameState.flagsPlaced
         .else
             ; Quitar bandera
-            mov byte ptr [ebx+2], 0
+            mov (Cell PTR [ebx]).isFlagged, 0
             dec gameState.flagsPlaced
         .endif
     .endif
@@ -546,6 +598,7 @@ ProcessCellClick endp
 ;-----------------------------------------------------------------------------
 GetCellState proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, pCellState:DWORD
     LOCAL cellOffset:DWORD
+    LOCAL cellPtr:DWORD
     
     ; Validar parámetros
     mov eax, gridIndex
@@ -567,47 +620,46 @@ GetCellState proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, pCellState:DWORD
     .endif
     
     ; Calcular offset en el array de celdas
-    ; offset = (gridIndex * 4 * 4 + cellY * 4 + cellX) * 4
+    ; Nuevo cálculo del offset usando tamaño de estructura
     mov eax, gridIndex
-    mov ebx, 16    ; 4 * 4
+    imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+    
+    mov ebx, cellY
+    imul ebx, 4           ; cellY * columnas por fila
+    add eax, ebx
+    
+    add eax, cellX        ; + cellX
+    
+    ; Multiplicar por el tamaño de la estructura Cell (4 bytes)
+    mov ebx, TYPE Cell
     mul ebx
     mov cellOffset, eax
     
-    mov eax, cellY
-    mov ebx, 4
-    mul ebx
-    add cellOffset, eax
-    
-    mov ecx, cellX
-    add cellOffset, ecx
-    
-    ; Multiplicar por 4 (tamaño de cada elemento)
-    mov eax, cellOffset
-    shl eax, 2    ; Multiplicar por 4
-    mov cellOffset, eax
-    
-    ; Obtener puntero a la celda en el array
-    mov ebx, offset cellStates
+    ; Obtener puntero a la celda
+    lea ebx, cellStates
     add ebx, cellOffset
+    mov cellPtr, ebx
     
     ; Obtener puntero a la estructura Cell de destino
     mov edx, pCellState
     
     ; Copiar los datos
+    mov ebx, cellPtr
+    
     ; hasMine
-    mov al, byte ptr [ebx]
+    mov al, (Cell PTR [ebx]).hasMine
     mov byte ptr [edx], al
     
     ; isRevealed
-    mov al, byte ptr [ebx+1]
+    mov al, (Cell PTR [ebx]).isRevealed
     mov byte ptr [edx+1], al
     
     ; isFlagged
-    mov al, byte ptr [ebx+2]
+    mov al, (Cell PTR [ebx]).isFlagged
     mov byte ptr [edx+2], al
     
     ; adjacentMines
-    mov al, byte ptr [ebx+3]
+    mov al, (Cell PTR [ebx]).adjacentMines
     mov byte ptr [edx+3], al
     
     ; Establecer los demás campos
