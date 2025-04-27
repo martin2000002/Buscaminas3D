@@ -346,10 +346,6 @@ HandleButtonClick proc hWnd:HWND, x:DWORD, y:DWORD
     ; Invalidar toda la ventana para volver a dibujar
     invoke InvalidateRect, hWnd, NULL, TRUE
     
-    ; Reiniciar el temporizador
-    invoke GetTickCount
-    mov gameState.timeStarted, eax
-    
     ; Clic procesado
     mov eax, 1
     ret

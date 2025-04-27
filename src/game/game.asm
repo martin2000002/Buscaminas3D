@@ -24,6 +24,7 @@ lastCalculatedMines BYTE 0  ; Variable global para almacenar el último valor ca
 debugNoAdyacentMinesStr db "(%d, %d, %d) -> SIN MINAS ADYACENTES", 0
 debugMineStr db "(%d, %d, %d) -> MINA", 0
 debugRevelada db "REVELADA", 0
+debugHasMine db "Tiene mina %d", 0
 buffer db 256 dup(?)
 
 ; Variables para generación aleatoria
@@ -686,15 +687,23 @@ GetElapsedTime proc
         xor edx, edx    ; 0 segundos
         ret
     .endif
-    
-    ; Obtener el tiempo actual
-    invoke GetTickCount
-    mov currentTime, eax
-    
-    ; Calcular el tiempo transcurrido en milisegundos
-    mov eax, currentTime
-    sub eax, gameState.timeStarted
-    mov elapsedTime, eax
+
+    ; Verificar si se acabo el juego
+    mov eax, gameState.isGameOver
+    .if eax == 1
+        ; devolver el tiempo final
+        mov eax, gameState.timeStarted
+        mov elapsedTime, eax
+    .elseif
+        ; Obtener el tiempo actual
+        invoke GetTickCount
+        mov currentTime, eax
+        
+        ; Calcular el tiempo transcurrido en milisegundos
+        mov eax, currentTime
+        sub eax, gameState.timeStarted
+        mov elapsedTime, eax
+    .endif
     
     ; Convertir a segundos (dividir por 1000)
     mov eax, elapsedTime
@@ -843,6 +852,7 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         
         ; Si la celda tiene 0 minas adyacentes, iniciar flood-fill 3D
         mov al, hasMine
+
         .if al == 0     ; No es mina
             mov al, adjacentMines
             .if al == 0     ; No tiene minas adyacentes
@@ -858,11 +868,25 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
                 mov cellChanged, 1
             .endif
         .else
+            ; Depuración: celdas sin minas adyacentes
+            invoke wsprintf, ADDR buffer, ADDR debugHasMine, 1
+            invoke OutputDebugString, ADDR buffer
             ; Es una mina, revelar esta celda y terminar el juego
             mov ebx, cellPtr
             mov (Cell PTR [ebx]).isRevealed, 1
             inc gameState.cellsRevealed
             mov cellChanged, 1
+
+            ; Verificamos si el timer está activo
+            mov eax, gameState.timeStarted
+            .if eax != 0
+                ; Calcular el tiempo transcurrido
+                invoke GetTickCount
+                sub eax, gameState.timeStarted
+                
+                ; Guardar el tiempo congelado
+                mov gameState.timeStarted, eax
+            .endif
             
             ; Marcar el juego como terminado
             mov gameState.isGameOver, 1
