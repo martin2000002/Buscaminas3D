@@ -23,9 +23,17 @@ EXTERN gameState:GameState
 .data
 ; Constantes para el grid
 GRID_CELLS          EQU 4           ; Número de celdas por lado (4x4)
-GRID_COLOR          EQU 00000000h   ; Color de las líneas del grid (negro)
-CELL_COLOR          EQU 00D3D3D3h   ; Color de fondo de las celdas (gris claro)
+GRID_COLOR          EQU 002D3748h   ; Color de las líneas del grid (gris azulado oscuro)
+CELL_COLOR          EQU 00D3D3D3h   ; Color de fondo de las celdas sin revelar (gris claro)
 CELL_COLOR_CLICKED  EQU 0000FF00h   ; Color cuando se hace clic (verde)
+
+; Modificación para header.asm - Actualización de colores
+
+; Color para el área de interfaz superior
+UI_BRUSH_COLOR  EQU 001E3A8Ah  ; Azul medianoche
+
+; Color para el texto en el header
+UI_TEXT_COLOR  EQU 00F8FAFCh   ; Blanco hueso
 
 ; Constantes definidas como porcentajes (multiplicadas por 100 para evitar decimales)
 HORIZONTAL_MARGIN   EQU 5           ; 5% del ancho disponible entre cada grid
@@ -222,6 +230,16 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     LOCAL hInstance:HINSTANCE
     LOCAL hMineIcon:HICON
     LOCAL hFlagIcon:HICON
+    LOCAL numberStr[2]:BYTE  ; Buffer para el número como string
+    LOCAL hFont:HFONT
+    LOCAL hOldFont:HFONT
+    LOCAL oldBkMode:DWORD
+    LOCAL oldTextColor:DWORD
+    LOCAL fontSize:DWORD
+    LOCAL textColor:DWORD
+    LOCAL textPosX:DWORD    ; Para guardar la posición X del texto
+    LOCAL textPosY:DWORD    ; Para guardar la posición Y del texto
+    LOCAL mineCount:DWORD   ; Para guardar el número de minas adyacentes
     
     ; Calcular el padding de celda basado en el porcentaje
     mov eax, currentGeometry.cellWidth
@@ -253,6 +271,21 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     mov eax, mineSize
     mov flagSize, eax
     
+    ; Calculamos el tamaño de fuente para los números (70% del tamaño de la celda)
+    mov eax, currentGeometry.cellWidth
+    mov ebx, 70
+    mul ebx
+    mov ebx, 100
+    div ebx
+    mov fontSize, eax
+    
+    ; Crear una fuente para los números
+    invoke CreateFont, fontSize, 0, 0, 0, FW_BOLD, 0, 0, 0, \
+                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, \
+                     CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, \
+                     DEFAULT_PITCH or FF_DONTCARE, NULL
+    mov hFont, eax
+    
     ; Crear pluma
     invoke CreatePen, PS_SOLID, 1, GRID_COLOR
     mov hPen, eax
@@ -260,6 +293,10 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     ; Seleccionar pluma en el DC
     invoke SelectObject, hdc, hPen
     mov hOldPen, eax
+    
+    ; Configurar el modo de fondo transparente para el texto
+    invoke SetBkMode, hdc, TRANSPARENT
+    mov oldBkMode, eax
     
     ; Obtener la instancia actual
     invoke GetWindowLong, hWnd, GWL_HINSTANCE
@@ -321,7 +358,7 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
             ; Dibujar la celda
             invoke Rectangle, hdc, rect.left, rect.top, rect.right, rect.bottom
             
-            ; Calcular el centro de la celda (lo usaremos para ambos íconos)
+            ; Calcular el centro de la celda (lo usaremos para ambos íconos y texto)
             mov eax, rect.left
             add eax, rect.right
             shr eax, 1         ; Dividir por 2
@@ -345,33 +382,90 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
             sub eax, ebx
             mov rect.top, eax
             
-            ; Si la celda está revelada y tiene mina, dibujar un ícono de mina
+            ; Si la celda está revelada
             mov al, cellData.isRevealed
             .if al != 0
                 mov al, cellData.hasMine
                 .if al != 0
-                    ; Cargar el ícono de mina
+                    ; Si tiene mina, dibujar un ícono de mina
                     invoke LoadImage, hInstance, IDI_MINE, IMAGE_ICON, mineSize, mineSize, LR_DEFAULTCOLOR
                     mov hMineIcon, eax
                     
-                    ; Dibujar el ícono
                     invoke DrawIconEx, hdc, rect.left, rect.top, hMineIcon, mineSize, mineSize, 0, NULL, DI_NORMAL
                     
-                    ; Liberar el ícono
                     invoke DestroyIcon, hMineIcon
+                .else
+                    ; Si no tiene mina, mostrar el número de minas adyacentes (si > 0)
+                    ; Usar movzx para extender correctamente el byte a DWORD
+                    movzx eax, cellData.adjacentMines
+                    mov mineCount, eax
+                    
+                    ; Solo mostrar si es mayor que 0
+                    .if mineCount > 0
+                        ; Seleccionar la fuente
+                        invoke SelectObject, hdc, hFont
+                        mov hOldFont, eax
+                        
+                        ; Determinar el color según el número
+                        mov eax, mineCount
+                        .if eax == 1
+                            ; Azul para 1
+                            mov textColor, 0000FFh  ; RGB(0, 0, 255)
+                        .elseif eax == 2
+                            ; Verde para 2
+                            mov textColor, 00FF00h  ; RGB(0, 255, 0)
+                        .elseif eax == 3
+                            ; Rojo para 3
+                            mov textColor, 0FF0000h ; RGB(255, 0, 0)
+                        .else
+                            ; Rojo para > 3
+                            mov textColor, 0FF0000h ; RGB(255, 0, 0)
+                        .endif
+                        
+                        ; Establecer el color del texto
+                        invoke SetTextColor, hdc, textColor
+                        mov oldTextColor, eax
+                        
+                        ; Convertir el número a string
+                        mov eax, mineCount
+                        add eax, '0'           ; Convertir a ASCII
+                        mov numberStr[0], al   ; Guardar el carácter
+                        mov numberStr[1], 0    ; Terminar el string
+                        
+                        ; Ajustar la posición para centrar el texto
+                        ; Restar la mitad del ancho aproximado del dígito
+                        mov eax, centerX
+                        mov ebx, fontSize
+                        shr ebx, 2  ; Aproximadamente 1/4 del tamaño de fuente
+                        sub eax, ebx
+                        mov textPosX, eax
+                        
+                        ; Ajustar la posición Y para centrar verticalmente
+                        mov eax, centerY
+                        mov ebx, fontSize
+                        shr ebx, 1  ; La mitad del tamaño de fuente
+                        sub eax, ebx
+                        mov textPosY, eax
+                        
+                        ; Dibujar el número
+                        invoke TextOut, hdc, textPosX, textPosY, addr numberStr, 1
+                        
+                        ; Restaurar el color del texto original
+                        invoke SetTextColor, hdc, oldTextColor
+                        
+                        ; Restaurar la fuente original
+                        invoke SelectObject, hdc, hOldFont
+                    .endif
                 .endif
             .else
-                ; Si la celda tiene bandera, dibujar el ícono de bandera
+                ; Si la celda no está revelada y tiene bandera, dibujar el ícono de bandera
                 mov al, cellData.isFlagged
                 .if al != 0
-                    ; Cargar el ícono de bandera
                     invoke LoadImage, hInstance, IDI_FLAG, IMAGE_ICON, flagSize, flagSize, LR_DEFAULTCOLOR
                     mov hFlagIcon, eax
                     
-                    ; Dibujar el ícono
                     invoke DrawIconEx, hdc, rect.left, rect.top, hFlagIcon, flagSize, flagSize, 0, NULL, DI_NORMAL
                     
-                    ; Liberar el ícono
                     invoke DestroyIcon, hFlagIcon
                 .endif
             .endif
@@ -385,11 +479,15 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
         inc row
     .endw
     
-    ; Restaurar pluma original
+    ; Restaurar pluma original y liberar recursos
     invoke SelectObject, hdc, hOldPen
-    
-    ; Liberar recursos
     invoke DeleteObject, hPen
+    
+    ; Liberar la fuente
+    invoke DeleteObject, hFont
+    
+    ; Restaurar el modo de fondo
+    invoke SetBkMode, hdc, oldBkMode
     
     ret
 DrawSingleGrid endp

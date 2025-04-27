@@ -24,6 +24,12 @@ lastCalculatedMines BYTE 0  ; Variable global para almacenar el último valor ca
 debugWriteStr db "ESCRITURA: cara=%d, y=%d, x=%d, offset=%d, valor=%d", 0
 debugReadStr db "LECTURA: cara=%d, y=%d, x=%d, offset=%d, valor=%d", 0
 debugCalcStr db "CALCULO: cara=%d, y=%d, x=%d, resultado=%d", 0
+debugAdyacenteStr db "ADYACENTE: cara=%d, y=%d, x=%d", 0
+debugFlodFillStr db "Celda a analizar: cara=%d, y=%d, x=%d", 0
+
+debugNoAdyacentMinesStr db "(%d, %d, %d) -> SIN MINAS ADYACENTES", 0
+debugMineStr db "(%d, %d, %d) -> MINA", 0
+debugRevelada db "REVELADA", 0
 buffer db 256 dup(?)
 
 ; Variables para generación aleatoria
@@ -241,8 +247,6 @@ InitGame proc
     LOCAL cellX:DWORD
     LOCAL cellY:DWORD
     LOCAL totalCells:DWORD
-    ; depuracion
-    LOCAL adyacentMines:DWORD
     
     ; Inicializar todas las celdas
     mov i, 0
@@ -399,31 +403,24 @@ InitGame proc
                     ; Calcular minas adyacentes
                     invoke CalculateAdjacentMines, i, j, k
 
-                    ; Mostrar el resultado del cálculo para depuración
-                    movzx eax, lastCalculatedMines
-                    mov adyacentMines, eax
-                    invoke wsprintf, ADDR buffer, ADDR debugCalcStr, i, j, k, adyacentMines
-                    invoke OutputDebugString, ADDR buffer
+                    .if lastCalculatedMines == 0
+                        ; Depuración: celdas sin minas adyacentes
+                        invoke wsprintf, ADDR buffer, ADDR debugNoAdyacentMinesStr, i, j, k
+                        invoke OutputDebugString, ADDR buffer
+                    .endif
 
                     ; Guardar el valor en la estructura
                     mov cl, lastCalculatedMines
                     mov ebx, cellPtr
                     mov (Cell PTR [ebx]).adjacentMines, cl
 
-                    ; Verificar si se guardó correctamente
-                    movzx eax, (Cell PTR [ebx]).adjacentMines
-                    mov adyacentMines, eax
-                    invoke wsprintf, ADDR buffer, ADDR debugWriteStr, i, j, k, cellOffset, adyacentMines
-                    invoke OutputDebugString, ADDR buffer
                 .else
                     ; Si tiene mina, asignar valor especial (57)
                     mov ebx, cellPtr
                     mov (Cell PTR [ebx]).adjacentMines, 57
                     
-                    ; ----- DEPURACIÓN: Verificar asignación de valor especial -----
-                    movzx eax, (Cell PTR [ebx]).adjacentMines
-                    mov adyacentMines, eax
-                    invoke wsprintf, ADDR buffer, ADDR debugCalcStr, i, j, k, adyacentMines
+                    ; Depuración: celda con mina
+                    invoke wsprintf, ADDR buffer, ADDR debugMineStr, i, j, k
                     invoke OutputDebugString, ADDR buffer
                 .endif
                 
@@ -445,6 +442,228 @@ InitGame proc
 InitGame endp
 
 ;-----------------------------------------------------------------------------
+; FloodFill3D - Implementa el algoritmo de flood-fill en 3D
+; Parámetros:
+;   gridIndex - Índice de la cara (0-3)
+;   cellX - Coordenada X de la celda (0-3)
+;   cellY - Coordenada Y de la celda (0-3)
+;-----------------------------------------------------------------------------
+FloodFill3D proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
+    LOCAL cellData:Cell
+    LOCAL minGridIndex:DWORD
+    LOCAL maxGridIndex:DWORD
+    LOCAL minX:DWORD
+    LOCAL maxX:DWORD
+    LOCAL minY:DWORD
+    LOCAL maxY:DWORD
+    LOCAL dii:DWORD
+    LOCAL dj:DWORD
+    LOCAL dk:DWORD
+    LOCAL newGridIndex:DWORD
+    LOCAL newX:DWORD
+    LOCAL newY:DWORD
+    LOCAL cellChanged:DWORD
+    
+    ; 1) Validación de límites
+    ; Verificar si la celda está fuera del tablero
+    .if gridIndex >= 4     ; Solo usamos 4 caras (0-3)
+        ret
+    .endif
+    
+    .if cellX >= 4
+        ret
+    .endif
+    
+    .if cellY >= 4
+        ret
+    .endif
+    
+    ; Obtener el estado actual de la celda
+    invoke GetCellState, gridIndex, cellX, cellY, addr cellData
+    
+    ; 2) Validar si ya está revelada o es una mina
+    ; Si la celda ya está revelada, no hacer nada
+    .if cellData.isRevealed != 0
+        ret
+    .endif
+    
+    ; Si la celda tiene una mina, no hacer nada
+    .if cellData.hasMine != 0
+        ret
+    .endif
+    
+    ; 3) Revelar la celda
+    ; Marcar la celda como revelada (no usar ProcessCellClick para evitar recursión infinita)
+    ; Calcular offset en el array de celdas
+    push eax
+    push ebx
+    push edx
+    
+    ; Calcular offset
+    mov eax, gridIndex
+    imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+    
+    mov ebx, cellY
+    imul ebx, 4           ; cellY * columnas por fila
+    add eax, ebx
+    
+    add eax, cellX        ; + cellX
+    
+    ; Multiplicar por el tamaño de la estructura Cell
+    mov ebx, TYPE Cell
+    mul ebx
+    
+    ; Obtener puntero a la celda
+    lea ebx, cellStates
+    add ebx, eax
+    
+    ; Verificar si la celda ya estaba revelada
+    mov al, (Cell PTR [ebx]).isRevealed
+    mov cellChanged, 0
+    .if al == 0
+        ; No estaba revelada, marcarla como revelada
+        mov (Cell PTR [ebx]).isRevealed, 1
+        inc gameState.cellsRevealed
+        mov cellChanged, 1
+
+    .endif
+    
+    pop edx
+    pop ebx
+    pop eax
+    
+    ; 4) Si tiene minas adyacentes > 0, detenerse
+    .if cellData.adjacentMines > 0
+        ret
+    .endif
+    
+    ; 5) Si no hubo cambios, detenerse (para evitar loops)
+    .if cellChanged == 0
+        ret
+    .endif
+
+    ; 6) Expandir en las 26 direcciones (o las que apliquen según los límites)
+    ; Calcular límites para dii (gridIndex)
+    mov eax, gridIndex
+    .if eax == 0
+        mov minGridIndex, 0
+    .else
+        mov eax, gridIndex
+        dec eax
+        mov minGridIndex, eax
+    .endif
+    
+    mov eax, gridIndex
+    inc eax
+    .if eax >= 4     ; Limitamos a las 4 caras (0-3)
+        mov maxGridIndex, 3
+    .else
+        mov maxGridIndex, eax
+    .endif
+    
+    ; Calcular límites para dj (Y)
+    mov eax, cellY
+    .if eax == 0
+        mov minY, 0
+    .else
+        mov eax, cellY
+        dec eax
+        mov minY, eax
+    .endif
+    
+    mov eax, cellY
+    inc eax
+    .if eax >= 4
+        mov maxY, 3
+    .else
+        mov maxY, eax
+    .endif
+    
+    ; Calcular límites para dk (X)
+    mov eax, cellX
+    .if eax == 0
+        mov minX, 0
+    .else
+        mov eax, cellX
+        dec eax
+        mov minX, eax
+    .endif
+    
+    mov eax, cellX
+    inc eax
+    .if eax >= 4
+        mov maxX, 3
+    .else
+        mov maxX, eax
+    .endif
+    
+    ; Recorrer los 26 vecinos (dentro de los límites calculados)
+    mov eax, minGridIndex
+    mov dii, eax
+    
+    grid_loop:
+        mov eax, dii
+        cmp eax, maxGridIndex
+        jg end_grid_loop
+        
+        mov eax, minY
+        mov dj, eax
+        
+        y_loop:
+            mov eax, dj
+            cmp eax, maxY
+            jg end_y_loop
+            
+            mov eax, minX
+            mov dk, eax
+            
+            x_loop:
+                mov eax, dk
+                cmp eax, maxX
+                jg end_x_loop
+                
+                ; Saltar la celda central (i,j,k)
+                mov eax, dii
+                .if eax == gridIndex
+                    mov eax, dj
+                    .if eax == cellY
+                        mov eax, dk
+                        .if eax == cellX
+                            jmp next_cell
+                        .endif
+                    .endif
+                .endif
+                
+                ; Llamar recursivamente a FloodFill3D para esta celda vecina
+                mov eax, dii
+                mov newGridIndex, eax
+                
+                mov eax, dj
+                mov newY, eax
+                
+                mov eax, dk
+                mov newX, eax
+                
+                invoke FloodFill3D, newGridIndex, newX, newY
+                
+                next_cell:
+                inc dk
+                jmp x_loop
+                
+            end_x_loop:
+            inc dj
+            jmp y_loop
+            
+        end_y_loop:
+        inc dii
+        jmp grid_loop
+        
+    end_grid_loop:
+    
+    ret
+FloodFill3D endp
+
+;-----------------------------------------------------------------------------
 ; ProcessCellClick - Procesa un clic en una celda
 ; Parámetros:
 ;   gridIndex - Índice de la cara (0-5)
@@ -463,11 +682,7 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     LOCAL isFlagged:BYTE
     LOCAL hasMine:BYTE
     LOCAL adjacentMines:BYTE
-        ; Variables temporales para depuración (DWORD)
-    LOCAL hasMine_dw:DWORD
-    LOCAL isRevealed_dw:DWORD
-    LOCAL isFlagged_dw:DWORD
-    LOCAL adjacentMines_dw:DWORD
+    LOCAL cellChanged:DWORD
     
     ; Validar parámetros
     mov eax, gridIndex
@@ -528,12 +743,8 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     mov al, (Cell PTR [ebx]).adjacentMines
     mov adjacentMines, al
     
-    ; ----- DEPURACIÓN: Verificar si se lee correctamente -----
-    movzx eax, adjacentMines
-    mov adjacentMines_dw, eax
-
-    invoke wsprintf, ADDR buffer, ADDR debugReadStr, gridIndex, cellY, cellX, cellOffset, adjacentMines_dw
-    invoke OutputDebugString, ADDR buffer
+    ; Inicializar flag de cambios
+    mov cellChanged, 0
     
     ; Si es clic izquierdo
     mov eax, leftClick
@@ -551,12 +762,29 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
             ret
         .endif
         
-        ; Marcar la celda como revelada
-        mov ebx, cellPtr
-        mov (Cell PTR [ebx]).isRevealed, 1
-        
-        ; Incrementar el contador de celdas reveladas
-        inc gameState.cellsRevealed
+        ; Si la celda tiene 0 minas adyacentes, iniciar flood-fill 3D
+        mov al, hasMine
+        .if al == 0     ; No es mina
+            mov al, adjacentMines
+            .if al == 0     ; No tiene minas adyacentes
+                ; En lugar de simplemente revelar esta celda, 
+                ; iniciamos el algoritmo de flood-fill 3D
+                invoke FloodFill3D, gridIndex, cellX, cellY
+                mov cellChanged, 1
+            .else
+                ; Tiene minas adyacentes, solo revelar esta celda
+                mov ebx, cellPtr
+                mov (Cell PTR [ebx]).isRevealed, 1
+                inc gameState.cellsRevealed
+                mov cellChanged, 1
+            .endif
+        .else
+            ; Es una mina, solo revelar esta celda
+            mov ebx, cellPtr
+            mov (Cell PTR [ebx]).isRevealed, 1
+            inc gameState.cellsRevealed
+            mov cellChanged, 1
+        .endif
         
     ; Si es clic derecho
     .else
@@ -574,15 +802,17 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
             ; Colocar bandera
             mov (Cell PTR [ebx]).isFlagged, 1
             inc gameState.flagsPlaced
+            mov cellChanged, 1
         .else
             ; Quitar bandera
             mov (Cell PTR [ebx]).isFlagged, 0
             dec gameState.flagsPlaced
+            mov cellChanged, 1
         .endif
     .endif
     
-    ; Retornar 1 (se realizaron cambios)
-    mov eax, 1
+    ; Retornar 1 si se realizaron cambios, 0 si no
+    mov eax, cellChanged
     ret
 ProcessCellClick endp
 
@@ -661,19 +891,6 @@ GetCellState proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, pCellState:DWORD
     ; adjacentMines
     mov al, (Cell PTR [ebx]).adjacentMines
     mov byte ptr [edx+3], al
-    
-    ; Establecer los demás campos
-    mov eax, gridIndex
-    mov byte ptr [edx+4], al    ; face
-    
-    mov eax, cellX
-    mov byte ptr [edx+5], al    ; x
-    
-    mov eax, cellY
-    mov byte ptr [edx+6], al    ; y
-    
-    ; z por ahora lo dejamos en 0
-    mov byte ptr [edx+7], 0     ; z
     
     ; Retornar 1 (éxito)
     mov eax, 1
