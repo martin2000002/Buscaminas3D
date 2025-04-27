@@ -24,7 +24,9 @@ lastCalculatedMines BYTE 0  ; Variable global para almacenar el último valor ca
 debugNoAdyacentMinesStr db "(%d, %d, %d) -> SIN MINAS ADYACENTES", 0
 debugMineStr db "(%d, %d, %d) -> MINA", 0
 debugRevelada db "REVELADA", 0
-debugHasMine db "Tiene mina %d", 0
+debugGameOver db "Game Over %d", 0
+debugHasMine db "TIENE MINAAAAAAAAAAA", 0
+debugNotHasMine db "NOOOOOOO TIENE MINA", 0
 buffer db 256 dup(?)
 
 ; Variables para generación aleatoria
@@ -32,6 +34,7 @@ seed DWORD 12345       ; Semilla para generación de números aleatorios
 
 .data?
 ; Nuevo arreglo basado en la estructura
+dummyCell Cell <>  ; Celda de seguridad // se sobrepone en el campo gameState.isGameOver
 cellStates Cell 6 * 4 * 4 dup(<>)  ; 6 caras * 4x4 celdas por cara
 
 .code
@@ -410,9 +413,9 @@ InitGame proc
                     mov (Cell PTR [ebx]).adjacentMines, cl
 
                 .else
-                    ; Si tiene mina, asignar valor especial (57)
+                    ; Si tiene mina, asignar valor especial (27)
                     mov ebx, cellPtr
-                    mov (Cell PTR [ebx]).adjacentMines, 57
+                    mov (Cell PTR [ebx]).adjacentMines, 27
                     
                     ; Depuración: celda con mina
                     invoke wsprintf, ADDR buffer, ADDR debugMineStr, i, j, k
@@ -854,22 +857,51 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         mov al, hasMine
 
         .if al == 0     ; No es mina
+            ; Depuración: celdas sin minas adyacentes
+            invoke wsprintf, ADDR buffer, ADDR debugNotHasMine
+            invoke OutputDebugString, ADDR buffer
+
+            ; Depuración: celdas sin minas adyacentes
+            invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
+            invoke OutputDebugString, ADDR buffer
+
             mov al, adjacentMines
             .if al == 0     ; No tiene minas adyacentes
                 ; En lugar de simplemente revelar esta celda, 
                 ; iniciamos el algoritmo de flood-fill 3D
                 invoke FloodFill3D, gridIndex, cellX, cellY
                 mov cellChanged, 1
+
+                ; Depuración: celdas sin minas adyacentes
+                invoke wsprintf, ADDR buffer, ADDR debugGameOver, 4004
+                invoke OutputDebugString, ADDR buffer
             .else
+
+                ; Depuración: celdas sin minas adyacentes
+                invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
+                invoke OutputDebugString, ADDR buffer
+                
                 ; Tiene minas adyacentes, solo revelar esta celda
                 mov ebx, cellPtr
                 mov (Cell PTR [ebx]).isRevealed, 1
                 inc gameState.cellsRevealed
                 mov cellChanged, 1
+
+                ; Depuración: celdas sin minas adyacentes
+                invoke wsprintf, ADDR buffer, ADDR debugGameOver, 405
+                invoke OutputDebugString, ADDR buffer
             .endif
+
+            ; Depuración: celdas sin minas adyacentes
+            invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
+            invoke OutputDebugString, ADDR buffer
+
         .else
             ; Depuración: celdas sin minas adyacentes
-            invoke wsprintf, ADDR buffer, ADDR debugHasMine, 1
+            invoke wsprintf, ADDR buffer, ADDR debugHasMine
+            invoke OutputDebugString, ADDR buffer
+            ; Depuración: celdas sin minas adyacentes
+            invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
             invoke OutputDebugString, ADDR buffer
             ; Es una mina, revelar esta celda y terminar el juego
             mov ebx, cellPtr
@@ -976,7 +1008,10 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
             mov cellChanged, 1
         .endif
     .endif
-    
+
+    ; Depuración: celdas sin minas adyacentes
+    invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
+    invoke OutputDebugString, ADDR buffer
     ; Retornar 1 si se realizaron cambios, 0 si no
     mov eax, cellChanged
     ret

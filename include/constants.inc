@@ -11,7 +11,7 @@ IDM_ABOUT       EQU 101
 
 ; Constantes del juego
 GRID_SIZE       EQU 4       ; Tamaño de cada cara del cubo (4x4)
-MINE_COUNT      EQU 10      ; Número total de minas
+MINE_COUNT      EQU 8      ; Número total de minas
 
 ; Constantes de mensajes personalizados
 WM_NEWGAME      EQU WM_USER + 1

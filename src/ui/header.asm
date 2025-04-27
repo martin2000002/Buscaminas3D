@@ -91,7 +91,7 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     sub eax, gameState.flagsPlaced
     mov flags, eax
     invoke wsprintf, addr FlagCountStr, addr FlagTemplate, flags
-    
+     
     ; Verificar si el temporizador está activo
     mov eax, gameState.timeStarted
     .if eax == 0
@@ -112,7 +112,8 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     ; MEDIDAS PARA ALINEACIONES
     ;-------------------------------------------------------------
     ; Anchos de textos
-    invoke GetTextExtentPoint32, hdc, ADDR FlagCountStr, 2, ADDR textWidth
+
+    invoke GetTextExtentPoint32, hdc, ADDR FlagCountStr, 3, ADDR textWidth
     invoke GetTextExtentPoint32, hdc, ADDR TimerStr, 5, ADDR timerTextWidth
     
     ; Anchos/Largos de iconos
@@ -228,7 +229,7 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     add xPos, eax          ; Sumamos eax a xPos
     mov ebx, IconTextSpace
     add xPos, ebx
-    invoke TextOut, hdc, xPos, centerYTexts, addr FlagCountStr, 2
+    invoke TextOut, hdc, xPos, centerYTexts, addr FlagCountStr, 3
 
     ;-------------------------------------------------------------
     ; MOSTRAR GRUPO CLOCK
