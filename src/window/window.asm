@@ -19,6 +19,7 @@ include include\resources.inc
 include src\window\window.inc
 include src\ui\header.inc      ; Incluir el header.inc
 include src\ui\grid.inc        ; Incluir el grid.inc
+include src\ui\gameui.inc      ; Incluir el nuevo gameui.inc
 include src\game\game.inc      ; Incluir el game.inc
 
 ; Declaramos las variables externas definidas en main.asm
@@ -31,6 +32,7 @@ EXTERN gameState:GameState
 BACKGROUND_COLOR  EQU 00121212h  ; Negro moderno ligeramente azulado
 TIMER_ID         EQU 1           ; ID del temporizador
 TIMER_INTERVAL   EQU 1000        ; Intervalo en milisegundos (1 segundo)
+WM_RESTARTGAME   EQU WM_USER + 2 ; Mensaje personalizado para reiniciar el juego
 
 .code
 
@@ -85,6 +87,7 @@ InitApp proc hInst:HINSTANCE
     mov gameState.timeStarted, 0
     mov gameState.flagsPlaced, 0
     mov gameState.cellsRevealed, 0
+    mov gameState.isGameOver, 0
     
     ; Inicializar la lógica del juego
     invoke InitGame
@@ -186,8 +189,14 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         shr eax, 16         ; Coordenada Y (los 16 bits superiores)
         mov yPos, eax
         
-        ; Procesar clic izquierdo
-        invoke HandleGridClick, hWnd, xPos, yPos, 1
+        ; Primero, verificar si el clic es en el botón de reinicio
+        invoke HandleButtonClick, hWnd, xPos, yPos
+        mov ecx, eax
+        
+        ; Si el clic no fue procesado por el botón, procesarlo para el grid
+        .if ecx == 0
+            invoke HandleGridClick, hWnd, xPos, yPos, 1
+        .endif
         
     .elseif uMsg == WM_RBUTTONDOWN
         ; Obtener posición del clic
@@ -202,6 +211,13 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         ; Procesar clic derecho
         invoke HandleGridClick, hWnd, xPos, yPos, 0
         
+    .elseif uMsg == WM_RESTARTGAME
+        ; Reiniciar el juego
+        invoke InitGame
+        
+        ; Invalidar toda la ventana para volver a dibujar
+        invoke InvalidateRect, hWnd, NULL, TRUE
+        
     .elseif uMsg == WM_PAINT
         invoke BeginPaint, hWnd, addr ps
         mov hdc, eax
@@ -211,6 +227,13 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         
         ; Dibujar las matrices 4x4
         invoke DrawGrids, hWnd, hdc
+        
+        ; Si el juego ha terminado, mostrar el mensaje de fin de juego y el botón de reinicio
+        mov eax, gameState.isGameOver
+        .if eax != 0
+            invoke DrawGameMessage, hWnd, hdc
+            invoke DrawRestartButton, hWnd, hdc
+        .endif
         
         invoke EndPaint, hWnd, addr ps
         

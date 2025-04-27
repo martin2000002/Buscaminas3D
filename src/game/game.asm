@@ -21,12 +21,6 @@ EXTERN gameState:GameState
 .data
 lastCalculatedMines BYTE 0  ; Variable global para almacenar el último valor calculado
 
-debugWriteStr db "ESCRITURA: cara=%d, y=%d, x=%d, offset=%d, valor=%d", 0
-debugReadStr db "LECTURA: cara=%d, y=%d, x=%d, offset=%d, valor=%d", 0
-debugCalcStr db "CALCULO: cara=%d, y=%d, x=%d, resultado=%d", 0
-debugAdyacenteStr db "ADYACENTE: cara=%d, y=%d, x=%d", 0
-debugFlodFillStr db "Celda a analizar: cara=%d, y=%d, x=%d", 0
-
 debugNoAdyacentMinesStr db "(%d, %d, %d) -> SIN MINAS ADYACENTES", 0
 debugMineStr db "(%d, %d, %d) -> MINA", 0
 debugRevelada db "REVELADA", 0
@@ -436,6 +430,7 @@ InitGame proc
     mov gameState.timeStarted, 0
     mov gameState.flagsPlaced, 0
     mov gameState.cellsRevealed, 0
+    mov gameState.isGameOver, 0   ; Inicializar el estado de fin de juego
     
     ret
 InitGame endp
@@ -752,6 +747,13 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     LOCAL adjacentMines:BYTE
     LOCAL cellChanged:DWORD
     
+    ; Verificar si el juego ya terminó
+    mov eax, gameState.isGameOver
+    .if eax != 0
+        xor eax, eax        ; El juego ya terminó, no procesar clic
+        ret
+    .endif
+    
     ; Validar parámetros
     mov eax, gridIndex
     .if eax >= 6
@@ -856,11 +858,74 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
                 mov cellChanged, 1
             .endif
         .else
-            ; Es una mina, solo revelar esta celda
+            ; Es una mina, revelar esta celda y terminar el juego
             mov ebx, cellPtr
             mov (Cell PTR [ebx]).isRevealed, 1
             inc gameState.cellsRevealed
             mov cellChanged, 1
+            
+            ; Marcar el juego como terminado
+            mov gameState.isGameOver, 1
+            
+            ; Revelar todas las minas para mostrarlas
+            push eax
+            push ebx
+            push ecx
+            push edx
+            
+            ; Revelar todas las minas
+            ; Esta parte es opcional: revelar todas las minas al perder
+            mov ecx, 0    ; gridIndex
+            .while ecx < 4
+                mov edx, 0    ; cellY
+                .while edx < 4
+                    mov eax, 0    ; cellX
+                    .while eax < 4
+                        ; Revisar si esta celda tiene mina
+                        push eax
+                        push ecx
+                        push edx
+                        
+                        ; Calcular offset
+                        mov eax, ecx
+                        imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+                        
+                        mov ebx, edx
+                        imul ebx, 4           ; cellY * columnas por fila
+                        add eax, ebx
+                        
+                        add eax, [esp+8]       ; + cellX (guardado en la pila)
+                        
+                        ; Multiplicar por el tamaño de la estructura Cell
+                        mov ebx, TYPE Cell
+                        mul ebx
+                        
+                        ; Obtener puntero a la celda
+                        lea ebx, cellStates
+                        add ebx, eax
+                        
+                        ; Revisar si tiene mina
+                        mov al, (Cell PTR [ebx]).hasMine
+                        .if al != 0
+                            ; Si tiene mina, revelarla
+                            mov (Cell PTR [ebx]).isRevealed, 1
+                        .endif
+                        
+                        pop edx
+                        pop ecx
+                        pop eax
+                        
+                        inc eax
+                    .endw
+                    inc edx
+                .endw
+                inc ecx
+            .endw
+            
+            pop edx
+            pop ecx
+            pop ebx
+            pop eax
         .endif
         
     ; Si es clic derecho

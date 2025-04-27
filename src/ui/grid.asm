@@ -510,6 +510,43 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     ret
 DrawSingleGrid endp
 
+;-----------------------------------------------------------------------------
+; GetGridGeometry - Obtiene información sobre la geometría del grid
+; Parámetros:
+;   pStartY - Puntero para recibir la posición Y inicial del grid
+;   pGridSize - Puntero para recibir el tamaño del grid
+; Retorna:
+;   eax - 1 si éxito, 0 si error
+;-----------------------------------------------------------------------------
+GetGridGeometry proc pStartY:DWORD, pGridSize:DWORD
+    ; Verificar que los punteros no sean NULL
+    mov eax, pStartY
+    .if eax == 0
+        xor eax, eax    ; Retornar 0 (error)
+        ret
+    .endif
+    
+    mov eax, pGridSize
+    .if eax == 0
+        xor eax, eax    ; Retornar 0 (error)
+        ret
+    .endif
+    
+    ; Guardar el valor de startY en el puntero proporcionado
+    mov eax, pStartY
+    mov ebx, currentGeometry.startY
+    mov [eax], ebx
+    
+    ; Guardar el valor de gridSize en el puntero proporcionado
+    mov eax, pGridSize
+    mov ebx, currentGeometry.gridSize
+    mov [eax], ebx
+    
+    ; Retornar 1 (éxito)
+    mov eax, 1
+    ret
+GetGridGeometry endp
+
 
 ;-----------------------------------------------------------------------------
 ; HandleGridClick - Maneja un clic en el área del grid

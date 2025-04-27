@@ -4,6 +4,7 @@ GameState STRUCT
     timeStarted     DWORD ?    ; Tiempo de inicio (GetTickCount)
     flagsPlaced     DWORD ?    ; Número de banderas colocadas
     cellsRevealed   DWORD ?    ; Número de celdas reveladas
+    isGameOver      DWORD ?    ; 1 si el juego terminó (jugador perdió), 0 si no
 GameState ENDS
 
 ; Estructura para una celda del cubo
