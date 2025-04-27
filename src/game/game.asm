@@ -416,9 +416,9 @@ InitGame proc
                     invoke wsprintf, ADDR buffer, ADDR debugWriteStr, i, j, k, cellOffset, adyacentMines
                     invoke OutputDebugString, ADDR buffer
                 .else
-                    ; Si tiene mina, asignar valor especial (1)
+                    ; Si tiene mina, asignar valor especial (57)
                     mov ebx, cellPtr
-                    mov (Cell PTR [ebx]).adjacentMines, 1
+                    mov (Cell PTR [ebx]).adjacentMines, 57
                     
                     ; ----- DEPURACIÓN: Verificar asignación de valor especial -----
                     movzx eax, (Cell PTR [ebx]).adjacentMines
