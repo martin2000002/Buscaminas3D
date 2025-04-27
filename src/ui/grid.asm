@@ -23,9 +23,10 @@ EXTERN gameState:GameState
 .data
 ; Constantes para el grid
 GRID_CELLS          EQU 4           ; Número de celdas por lado (4x4)
-GRID_COLOR          EQU 002D3748h   ; Color de las líneas del grid (gris azulado oscuro)
-CELL_COLOR          EQU 00D3D3D3h   ; Color de fondo de las celdas sin revelar (gris claro)
-CELL_COLOR_CLICKED  EQU 0000FF00h   ; Color cuando se hace clic (verde)
+GRID_COLOR          EQU 003A3A3Ah   ; Color de las líneas del grid (gris azulado oscuro)
+CELL_COLOR          EQU 002C2C2Ch   ; Color de fondo de las celdas sin revelar (gris claro)
+NORMAL_CELL_COLOR_CLICKED  EQU 001A1A1Ah   ; Color cuando se hace clic (verde)
+MINE_CELL_COLOR_CLICKED  EQU 00261818h   ; Color cuando se hace clic (verde)
 
 ; Modificación para header.asm - Actualización de colores
 
@@ -344,7 +345,14 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
             mov al, cellData.isRevealed
             .if al != 0
                 ; Celda revelada
-                invoke CreateSolidBrush, CELL_COLOR_CLICKED
+                mov al, cellData.hasMine
+                .if al != 0
+                    ; Es una mina revelada, usar color especial para minas
+                    invoke CreateSolidBrush, MINE_CELL_COLOR_CLICKED  ; Rojo intenso para minas
+                .else
+                    ; Celda normal revelada, sin mina
+                    invoke CreateSolidBrush, NORMAL_CELL_COLOR_CLICKED
+                .endif
             .else
                 ; Celda normal, siempre utilizamos el color normal
                 invoke CreateSolidBrush, CELL_COLOR
@@ -406,21 +414,31 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                         invoke SelectObject, hdc, hFont
                         mov hOldFont, eax
                         
-                        ; Determinar el color según el número
                         mov eax, mineCount
                         .if eax == 1
-                            ; Azul para 1
-                            mov textColor, 0000FFh  ; RGB(0, 0, 255)
+                            mov textColor, 00F6823Bh ; Azul claro (1 mina)
                         .elseif eax == 2
-                            ; Verde para 2
-                            mov textColor, 00FF00h  ; RGB(0, 255, 0)
+                            mov textColor, 0081B910h ; Verde menta
                         .elseif eax == 3
-                            ; Rojo para 3
-                            mov textColor, 0FF0000h ; RGB(255, 0, 0)
+                            mov textColor, 005EC522h ; Verde lima
+                        .elseif eax == 4
+                            mov textColor, 0008B3EAh ; Amarillo mostaza
+                        .elseif eax == 5
+                            mov textColor, 001673F9h ; Naranja vivo
+                        .elseif eax == 6
+                            mov textColor, 000C58EAh ; Naranja fuerte
+                        .elseif eax == 7
+                            mov textColor, 004444EFh ; Rojo puro
+                        .elseif eax == 8
+                            mov textColor, 002626DCh ; Rojo oscuro
+                        .elseif eax == 9
+                            mov textColor, 007727DBh ; Magenta alerta
+                        .elseif eax == 10
+                            mov textColor, 004D179Dh ; Magenta oscuro
                         .else
-                            ; Rojo para > 3
-                            mov textColor, 0FF0000h ; RGB(255, 0, 0)
+                            mov textColor, 00CCCCCCh
                         .endif
+
                         
                         ; Establecer el color del texto
                         invoke SetTextColor, hdc, textColor

@@ -1,11 +1,13 @@
 // resources.rc - Archivo de recursos para Buscaminas 3D
 
 // Definiciones de recursos
+#define IDI_APP          200
 #define IDI_FLAG         201
 #define IDI_CLOCK        202
 #define IDI_MINE         203
 
 // Iconos para el juego
-IDI_FLAG ICON "resources\flag.ico"
-IDI_CLOCK ICON "resources\clock.ico"
-IDI_MINE ICON "resources\mine.ico"
+IDI_APP ICON "resources\\ICO\\app.ico"
+IDI_FLAG ICON "resources\\ICO\\flag.ico"
+IDI_CLOCK ICON "resources\\ICO\\clock.ico"
+IDI_MINE ICON "resources\\ICO\\mine.ico"

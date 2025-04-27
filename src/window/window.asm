@@ -28,7 +28,7 @@ EXTERN ErrorMsg:BYTE
 EXTERN gameState:GameState
 
 .data
-; Variables locales
+BACKGROUND_COLOR  EQU 00121212h  ; Negro moderno ligeramente azulado
 
 .code
 
@@ -91,11 +91,20 @@ InitApp proc hInst:HINSTANCE
 InitApp endp
 
 ; Registrar la clase de ventana
+
+; CAMBIOS EN WINDOW.ASM - COLOR DE FONDO DE LA VENTANA
+; Registrar la clase de ventana
 RegisterWinClass proc hInst:HINSTANCE
     LOCAL wc:WNDCLASSEX
+    LOCAL hBrush:HBRUSH
+    LOCAL hIcon:HICON
     
     ; Limpiar la estructura
     invoke RtlZeroMemory, addr wc, sizeof WNDCLASSEX
+    
+    ; Crear un pincel con el color de fondo moderno (negro azulado)
+    invoke CreateSolidBrush, BACKGROUND_COLOR  ; Negro moderno ligeramente azulado
+    mov hBrush, eax
     
     mov wc.cbSize, sizeof WNDCLASSEX
     mov wc.style, CS_HREDRAW or CS_VREDRAW
@@ -104,11 +113,17 @@ RegisterWinClass proc hInst:HINSTANCE
     mov wc.cbWndExtra, 0
     mov eax, hInst
     mov wc.hInstance, eax
-    mov wc.hbrBackground, COLOR_WINDOW+1
+    mov ecx, hBrush
+    mov wc.hbrBackground, ecx
     mov wc.lpszMenuName, NULL
     mov wc.lpszClassName, offset ClassName
+
+    ; Cargar el ícono de la aplicación desde los recursos
+    invoke LoadIcon, hInst, IDI_APP
+    mov hIcon, eax
     
-    invoke LoadIcon, NULL, IDI_APPLICATION
+    ; Asignar el ícono a la clase de ventana
+    mov eax, hIcon
     mov wc.hIcon, eax
     mov wc.hIconSm, eax
     

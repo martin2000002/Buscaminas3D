@@ -22,7 +22,8 @@ EXTERN gameState:GameState
 
 .data
 ; Color para el área de interfaz superior
-UI_BRUSH_COLOR  EQU 00574241h
+BACKGROUND_COLOR  EQU 00542517h  ; Azul medianoche
+TEXT_COLOR EQU 00F8FAFCh
 
 ; Strings para mostrar
 FlagCountStr    db "10", 0
@@ -67,7 +68,7 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     mov rect.bottom, eax    ; Altura del 10% del alto total
     
     ; Crear un pincel para rellenar el rectángulo
-    invoke CreateSolidBrush, UI_BRUSH_COLOR
+    invoke CreateSolidBrush, BACKGROUND_COLOR
     mov hBrush, eax
     
     ; Rellenar el rectángulo con el pincel
@@ -118,10 +119,13 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     div ebx              ; eax = iconSize * 0.7 (70% del tamaño del icono)
     mov textHeight, eax
     
+    ; Establecer el color del texto a blanco hueso para mejor contraste con el fondo azul
+    invoke SetTextColor, hdc, TEXT_COLOR
+
     invoke CreateFont, textHeight, 0, 0, 0, FW_BOLD, 0, 0, 0, \
-                      DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, \
-                      CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, \
-                      DEFAULT_PITCH or FF_DONTCARE, NULL
+                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, \
+                    CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, \
+                    DEFAULT_PITCH or FF_DONTCARE, NULL
     mov newFont, eax
     
     ; Seleccionar la nueva fuente en el contexto de dispositivo
