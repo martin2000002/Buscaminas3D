@@ -29,6 +29,8 @@ EXTERN gameState:GameState
 
 .data
 BACKGROUND_COLOR  EQU 00121212h  ; Negro moderno ligeramente azulado
+TIMER_ID         EQU 1           ; ID del temporizador
+TIMER_INTERVAL   EQU 1000        ; Intervalo en milisegundos (1 segundo)
 
 .code
 
@@ -91,9 +93,6 @@ InitApp proc hInst:HINSTANCE
 InitApp endp
 
 ; Registrar la clase de ventana
-
-; CAMBIOS EN WINDOW.ASM - COLOR DE FONDO DE LA VENTANA
-; Registrar la clase de ventana
 RegisterWinClass proc hInst:HINSTANCE
     LOCAL wc:WNDCLASSEX
     LOCAL hBrush:HBRUSH
@@ -140,9 +139,36 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
     LOCAL hdc:HDC
     LOCAL xPos:DWORD
     LOCAL yPos:DWORD
+    LOCAL headerRect:RECT
     
     .if uMsg == WM_CREATE
-        ; Inicializaciones adicionales al crear la ventana
+        ; Iniciar el temporizador para actualizar el reloj cada segundo
+        invoke SetTimer, hWnd, TIMER_ID, TIMER_INTERVAL, NULL
+        
+    .elseif uMsg == WM_TIMER
+        ; Si el temporizador ha sido activado (se ha revelado al menos una celda),
+        ; actualizar solo el área del encabezado
+        mov eax, gameState.timeStarted
+        .if eax != 0
+            ; Si al menos una celda ha sido revelada, actualizar el header
+            mov eax, gameState.cellsRevealed
+            .if eax > 0                
+                ; Obtener el tamaño de la ventana
+                invoke GetClientRect, hWnd, addr headerRect
+                
+                ; Calcular la altura del header (10% de la altura total)
+                mov eax, headerRect.bottom
+                mov ebx, 10
+                xor edx, edx
+                div ebx
+                
+                ; Establecer el límite inferior del RECT para solo actualizar el header
+                mov headerRect.bottom, eax
+                
+                ; Invalidar solo el área del encabezado
+                invoke InvalidateRect, hWnd, addr headerRect, TRUE
+            .endif
+        .endif
         
     .elseif uMsg == WM_COMMAND
         mov eax, wParam
@@ -189,6 +215,9 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         invoke EndPaint, hWnd, addr ps
         
     .elseif uMsg == WM_DESTROY
+        ; Eliminar el temporizador antes de cerrar
+        invoke KillTimer, hWnd, TIMER_ID
+        
         invoke PostQuitMessage, 0
         
     .else

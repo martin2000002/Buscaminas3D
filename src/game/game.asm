@@ -433,8 +433,7 @@ InitGame proc
     
     ; Inicializar el estado del juego
     mov gameState.isRunning, 1
-    invoke GetTickCount
-    mov gameState.timeStarted, eax
+    mov gameState.timeStarted, 0
     mov gameState.flagsPlaced, 0
     mov gameState.cellsRevealed, 0
     
@@ -664,6 +663,75 @@ FloodFill3D proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
 FloodFill3D endp
 
 ;-----------------------------------------------------------------------------
+; GetElapsedTime - Calcula el tiempo transcurrido desde el inicio del juego
+; Retorna:
+;   eax - Minutos transcurridos (0-99)
+;   edx - Segundos transcurridos (0-59)
+;-----------------------------------------------------------------------------
+GetElapsedTime proc
+    LOCAL currentTime:DWORD
+    LOCAL elapsedTime:DWORD
+    LOCAL seconds:DWORD
+    LOCAL minutes:DWORD
+    
+    ; Verificar si el juego está en ejecución
+    mov eax, gameState.isRunning
+    .if eax == 0
+        ; Si el juego no está en ejecución, retornar 0:00
+        xor eax, eax    ; 0 minutos
+        xor edx, edx    ; 0 segundos
+        ret
+    .endif
+    
+    ; Verificar si el tiempo de inicio es válido
+    mov eax, gameState.timeStarted
+    .if eax == 0
+        ; Si no se ha iniciado el timer, retornar 0:00
+        xor eax, eax    ; 0 minutos
+        xor edx, edx    ; 0 segundos
+        ret
+    .endif
+    
+    ; Obtener el tiempo actual
+    invoke GetTickCount
+    mov currentTime, eax
+    
+    ; Calcular el tiempo transcurrido en milisegundos
+    mov eax, currentTime
+    sub eax, gameState.timeStarted
+    mov elapsedTime, eax
+    
+    ; Convertir a segundos (dividir por 1000)
+    mov eax, elapsedTime
+    mov ebx, 1000
+    xor edx, edx
+    div ebx
+    mov seconds, eax
+    
+    ; Calcular minutos y segundos
+    mov eax, seconds
+    mov ebx, 60
+    xor edx, edx
+    div ebx
+    
+    ; eax = minutos, edx = segundos restantes
+    mov minutes, eax
+    mov seconds, edx    ; Guardar los segundos restantes (0-59)
+    
+    ; Limitar a 99 minutos
+    .if minutes > 99
+        mov minutes, 99
+        mov seconds, 59    ; Mostrar 99:59 como máximo
+    .endif
+    
+    ; Retornar: eax = minutos, edx = segundos
+    mov eax, minutes
+    mov edx, seconds
+    
+    ret
+GetElapsedTime endp
+
+;-----------------------------------------------------------------------------
 ; ProcessCellClick - Procesa un clic en una celda
 ; Parámetros:
 ;   gridIndex - Índice de la cara (0-5)
@@ -760,6 +828,15 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         .if al != 0
             xor eax, eax    ; Retornar 0 (sin cambios)
             ret
+        .endif
+        
+        ; Verificar si no hay celdas reveladas aún
+        mov eax, gameState.cellsRevealed
+        add eax, gameState.timeStarted
+        .if eax == 0
+            ; Si no está establecido y es la primera celda, iniciar el timer
+            invoke GetTickCount
+            mov gameState.timeStarted, eax
         .endif
         
         ; Si la celda tiene 0 minas adyacentes, iniciar flood-fill 3D

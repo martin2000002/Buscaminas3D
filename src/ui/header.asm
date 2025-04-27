@@ -16,6 +16,7 @@ include include\structures.inc
 include include\resources.inc
 
 include src\ui\header.inc
+include src\game\game.inc    ; Incluir el módulo de juego para acceder a GetElapsedTime
 
 ; Variables externas definidas en main.asm
 EXTERN gameState:GameState
@@ -26,8 +27,10 @@ BACKGROUND_COLOR  EQU 00542517h  ; Azul medianoche
 TEXT_COLOR EQU 00F8FAFCh
 
 ; Strings para mostrar
-FlagCountStr    db "10", 0
-TimerStr        db "00:00", 0
+FlagCountStr    db "  ", 0
+TimerStr        db "     ", 0    ; Buffer para el tiempo "MM:SS"
+FlagTemplate    db "%2d", 0
+TimeTemplate    db "%02d:%02d", 0
 
 PercentageGroupSpace   DWORD 20
 IconTextSpace   DWORD 10
@@ -55,6 +58,9 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     LOCAL oldFont:HFONT
     LOCAL newFont:HFONT
     LOCAL oldBkMode:DWORD
+    LOCAL minutes:DWORD
+    LOCAL seconds:DWORD
+    LOCAL flags:DWORD
     
     ;-------------------------------------------------------------
     ; BACKGROUND DEL HEADER
@@ -78,14 +84,37 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     invoke DeleteObject, hBrush
 
     ;-------------------------------------------------------------
+    ; ACTUALIZAR TEXTO DEL CONTADOR DE BANDERAS Y TIMER
+    ;-------------------------------------------------------------
+    ; Actualizar contador de banderas (mostrar MINE_COUNT - flagsPlaced)
+    mov eax, MINE_COUNT
+    sub eax, gameState.flagsPlaced
+    mov flags, eax
+    invoke wsprintf, addr FlagCountStr, addr FlagTemplate, flags
+    
+    ; Verificar si el temporizador está activo
+    mov eax, gameState.timeStarted
+    .if eax == 0
+        ; Si el timer no está activo, mostrar "00:00"
+        mov minutes, 0
+        mov seconds, 0
+    .else
+        ; Obtener tiempo transcurrido
+        invoke GetElapsedTime
+        mov minutes, eax
+        mov seconds, edx
+    .endif
+    
+    ; Formatear el tiempo como "MM:SS"
+    invoke wsprintf, addr TimerStr, addr TimeTemplate, minutes, seconds
+    
+    ;-------------------------------------------------------------
     ; MEDIDAS PARA ALINEACIONES
     ;-------------------------------------------------------------
     ; Anchos de textos
     invoke GetTextExtentPoint32, hdc, ADDR FlagCountStr, 2, ADDR textWidth
-
     invoke GetTextExtentPoint32, hdc, ADDR TimerStr, 5, ADDR timerTextWidth
     
-
     ; Anchos/Largos de iconos
     mov eax, topAreaHeight
     mov ebx, 8          ; Multiplicar por 0.8 (8/10)
