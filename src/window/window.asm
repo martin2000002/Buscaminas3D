@@ -216,6 +216,15 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
         ; Invalidar toda la ventana para volver a dibujar
         invoke InvalidateRect, hWnd, NULL, TRUE
         
+    .elseif uMsg == WM_GETMINMAXINFO
+        ; Obtener puntero a la estructura MINMAXINFO
+        mov ebx, lParam
+        
+        ; Establecer el tamaño mínimo de la ventana
+        mov (MINMAXINFO PTR [ebx]).ptMinTrackSize.x, 500
+        
+        mov (MINMAXINFO PTR [ebx]).ptMinTrackSize.y, 300
+        
     .elseif uMsg == WM_PAINT
         invoke BeginPaint, hWnd, addr ps
         mov hdc, eax

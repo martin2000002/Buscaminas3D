@@ -1,5 +1,5 @@
 ; Constantes de la ventana
-WINDOW_WIDTH    EQU 800
+WINDOW_WIDTH    EQU 1000
 WINDOW_HEIGHT   EQU 600
 
 ; Identificadores de recursos
