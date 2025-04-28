@@ -1,4 +1,3 @@
-; main.asm - Archivo principal para Buscaminas 3D
 .386
 .model flat, stdcall
 option casemap:none
@@ -10,15 +9,13 @@ includelib \masm32\lib\user32.lib
 includelib \masm32\lib\kernel32.lib
 includelib \masm32\lib\gdi32.lib
 
-; Incluir nuestros archivos
 include include\constants.inc
 include include\structures.inc
 
 include src\window\window.inc
 
 .data
-; Declaramos los símbolos aquí para ser usados en window.asm
-; Hacemos que sean PUBLIC para que sean visibles desde otros módulos
+; Declaramos los símbolos aquí para ser usados en otros modulos
 PUBLIC ClassName
 PUBLIC AppName
 PUBLIC ErrorMsg

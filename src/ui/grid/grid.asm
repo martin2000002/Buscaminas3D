@@ -14,27 +14,15 @@ includelib \masm32\lib\gdi32.lib
 include include\constants.inc
 include include\resources.inc
 include include\structures.inc
-include src\ui\grid.inc
-include src\game\game.inc  ; Incluir el módulo de lógica de juego
+include src\ui\grid\grid.inc
+include src\game\game.inc
 
-; Variables externas definidas en main.asm
 EXTERN gameState:GameState
 
 .data
 ; Constantes para el grid
 GRID_CELLS          EQU 4           ; Número de celdas por lado (4x4)
 GRID_COLOR          EQU 003A3A3Ah   ; Color de las líneas del grid (gris azulado oscuro)
-CELL_COLOR          EQU 002C2C2Ch   ; Color de fondo de las celdas sin revelar (gris claro)
-NORMAL_CELL_COLOR_CLICKED  EQU 001A1A1Ah   ; Color cuando se hace clic (verde)
-MINE_CELL_COLOR_CLICKED  EQU 00261818h   ; Color cuando se hace clic (verde)
-
-; Modificación para header.asm - Actualización de colores
-
-; Color para el área de interfaz superior
-UI_BRUSH_COLOR  EQU 001E3A8Ah  ; Azul medianoche
-
-; Color para el texto en el header
-UI_TEXT_COLOR  EQU 00F8FAFCh   ; Blanco hueso
 
 ; Constantes definidas como porcentajes (multiplicadas por 100 para evitar decimales)
 HORIZONTAL_MARGIN   EQU 5           ; 5% del ancho disponible entre cada grid
@@ -42,18 +30,7 @@ VERTICAL_MARGIN     EQU 15          ; 15% del alto disponible como margen vertic
 CELL_PADDING_PCT    EQU 5           ; 5% del tamaño de la celda como padding
 MINE_RADIUS_PCT     EQU 20          ; 20% del tamaño de la celda como radio para la mina
 
-; Variables globales para la geometría del grid
-gridGeometry STRUCT
-    gridSize              DWORD ?   ; Tamaño de cada grid
-    cellWidth             DWORD ?   ; Ancho de cada celda
-    cellHeight            DWORD ?   ; Alto de cada celda
-    startX                DWORD ?   ; Posición X inicial
-    startY                DWORD ?   ; Posición Y inicial
-    horizontalMarginPixels DWORD ?  ; Margen horizontal en píxeles
-    topAreaHeight         DWORD ?   ; Altura del área superior (header)
-gridGeometry ENDS
-
-currentGeometry gridGeometry <>
+currentGeometry GridGeometry <>
 
 .code
 
@@ -225,22 +202,22 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
     LOCAL hOldPen:HPEN
     LOCAL hOldBrush:HBRUSH
     LOCAL rect:RECT
-    LOCAL cellData:Cell      ; Para almacenar el estado de cada celda
+    LOCAL cellData:Cell
     LOCAL centerX:DWORD
     LOCAL centerY:DWORD
     LOCAL hInstance:HINSTANCE
     LOCAL hMineIcon:HICON
     LOCAL hFlagIcon:HICON
-    LOCAL numberStr[2]:BYTE  ; Buffer para el número como string
+    LOCAL numberStr[2]:BYTE
     LOCAL hFont:HFONT
     LOCAL hOldFont:HFONT
     LOCAL oldBkMode:DWORD
     LOCAL oldTextColor:DWORD
     LOCAL fontSize:DWORD
     LOCAL textColor:DWORD
-    LOCAL textPosX:DWORD    ; Para guardar la posición X del texto
-    LOCAL textPosY:DWORD    ; Para guardar la posición Y del texto
-    LOCAL mineCount:DWORD   ; Para guardar el número de minas adyacentes
+    LOCAL textPosX:DWORD
+    LOCAL textPosY:DWORD
+    LOCAL mineCount:DWORD
     
     ; Calcular el padding de celda basado en el porcentaje
     mov eax, currentGeometry.cellWidth
@@ -348,14 +325,14 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                 mov al, cellData.hasMine
                 .if al != 0
                     ; Es una mina revelada, usar color especial para minas
-                    invoke CreateSolidBrush, MINE_CELL_COLOR_CLICKED  ; Rojo intenso para minas
+                    invoke CreateSolidBrush, SECONDARY_COLOR_30  ; Rojo intenso para minas
                 .else
                     ; Celda normal revelada, sin mina
-                    invoke CreateSolidBrush, NORMAL_CELL_COLOR_CLICKED
+                    invoke CreateSolidBrush, PRIMARY_COLOR_70
                 .endif
             .else
                 ; Celda normal, siempre utilizamos el color normal
-                invoke CreateSolidBrush, CELL_COLOR
+                invoke CreateSolidBrush, PRIMARY_COLOR_30
             .endif
             mov hBrush, eax
             
@@ -404,7 +381,6 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                     invoke DestroyIcon, hMineIcon
                 .else
                     ; Si no tiene mina, mostrar el número de minas adyacentes (si > 0)
-                    ; Usar movzx para extender correctamente el byte a DWORD
                     movzx eax, cellData.adjacentMines
                     mov mineCount, eax
                     
@@ -439,7 +415,6 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                             mov textColor, 00CCCCCCh
                         .endif
 
-                        
                         ; Establecer el color del texto
                         invoke SetTextColor, hdc, textColor
                         mov oldTextColor, eax
@@ -451,7 +426,6 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                         mov numberStr[1], 0    ; Terminar el string
                         
                         ; Ajustar la posición para centrar el texto
-                        ; Restar la mitad del ancho aproximado del dígito
                         mov eax, centerX
                         mov ebx, fontSize
                         shr ebx, 2  ; Aproximadamente 1/4 del tamaño de fuente
@@ -461,7 +435,7 @@ DrawSingleGrid proc hdc:HDC, x:DWORD, y:DWORD, gridWidth:DWORD, gridHeight:DWORD
                         ; Ajustar la posición Y para centrar verticalmente
                         mov eax, centerY
                         mov ebx, fontSize
-                        shr ebx, 1  ; La mitad del tamaño de fuente
+                        shr ebx, 1
                         sub eax, ebx
                         mov textPosY, eax
                         
@@ -688,7 +662,7 @@ HandleGridClick proc hWnd:HWND, x:DWORD, y:DWORD, leftClick:DWORD
         inc gridIndex
     .endw
     
-    ; Si llegamos aquí, el clic no está en ningún grid
+    ; Clic no está en ningún grid
     xor eax, eax
     ret
 HandleGridClick endp

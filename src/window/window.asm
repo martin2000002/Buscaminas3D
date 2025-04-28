@@ -1,4 +1,3 @@
-; window.asm - Implementación de la ventana para Buscaminas 3D
 .386
 .model flat, stdcall
 option casemap:none
@@ -17,19 +16,18 @@ include include\structures.inc
 include include\resources.inc
 
 include src\window\window.inc
-include src\ui\header.inc      ; Incluir el header.inc
-include src\ui\grid.inc        ; Incluir el grid.inc
-include src\ui\gameui.inc      ; Incluir el nuevo gameui.inc
-include src\game\game.inc      ; Incluir el game.inc
+include src\ui\header\header.inc
+include src\ui\grid\grid.inc
+include src\ui\game-over\game-over.inc
+include src\game\game.inc
 
-; Declaramos las variables externas definidas en main.asm
+; Variables externas definidas en main.asm
 EXTERN ClassName:BYTE
 EXTERN AppName:BYTE
 EXTERN ErrorMsg:BYTE
 EXTERN gameState:GameState
 
 .data
-BACKGROUND_COLOR  EQU 00121212h  ; Negro moderno ligeramente azulado
 TIMER_ID         EQU 1           ; ID del temporizador
 TIMER_INTERVAL   EQU 1000        ; Intervalo en milisegundos (1 segundo)
 WM_RESTARTGAME   EQU WM_USER + 2 ; Mensaje personalizado para reiniciar el juego
@@ -105,7 +103,7 @@ RegisterWinClass proc hInst:HINSTANCE
     invoke RtlZeroMemory, addr wc, sizeof WNDCLASSEX
     
     ; Crear un pincel con el color de fondo moderno (negro azulado)
-    invoke CreateSolidBrush, BACKGROUND_COLOR  ; Negro moderno ligeramente azulado
+    invoke CreateSolidBrush, PRIMARY_COLOR_100
     mov hBrush, eax
     
     mov wc.cbSize, sizeof WNDCLASSEX

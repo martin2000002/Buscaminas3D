@@ -23,14 +23,10 @@ lastCalculatedMines BYTE 0  ; Variable global para almacenar el último valor ca
 
 debugNoAdyacentMinesStr db "(%d, %d, %d) -> SIN MINAS ADYACENTES", 0
 debugMineStr db "(%d, %d, %d) -> MINA", 0
-debugRevelada db "REVELADA", 0
-debugGameOver db "Game Over %d", 0
-debugHasMine db "TIENE MINAAAAAAAAAAA", 0
-debugNotHasMine db "NOOOOOOO TIENE MINA", 0
 buffer db 256 dup(?)
 
 ; Variables para generación aleatoria
-seed DWORD 12345       ; Semilla para generación de números aleatorios
+seed DWORD 12345
 
 .data?
 ; Nuevo arreglo basado en la estructura
@@ -374,7 +370,6 @@ InitGame proc
             mov k, 0
             .while k < 4    ; Para cada columna
                 ; Calcular offset en el array de celdas
-                ; Nuevo cálculo del offset usando tamaño de estructura
                 mov eax, i
                 imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
                 
@@ -434,7 +429,7 @@ InitGame proc
     mov gameState.timeStarted, 0
     mov gameState.flagsPlaced, 0
     mov gameState.cellsRevealed, 0
-    mov gameState.isGameOver, 0   ; Inicializar el estado de fin de juego
+    mov gameState.isGameOver, 0
     
     ret
 InitGame endp
@@ -491,7 +486,7 @@ FloodFill3D proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
     .endif
     
     ; 3) Revelar la celda
-    ; Marcar la celda como revelada (no usar ProcessCellClick para evitar recursión infinita)
+    ; Marcar la celda como revelada sin ProcessCellclick
     ; Calcular offset en el array de celdas
     push eax
     push ebx
@@ -540,7 +535,7 @@ FloodFill3D proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
         ret
     .endif
 
-    ; 6) Expandir en las 26 direcciones (o las que apliquen según los límites)
+    ; 6) Expandir en las 26 direcciones
     ; Calcular límites para dii (gridIndex)
     mov eax, gridIndex
     .if eax == 0
@@ -553,7 +548,7 @@ FloodFill3D proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD
     
     mov eax, gridIndex
     inc eax
-    .if eax >= 4     ; Limitamos a las 4 caras (0-3)
+    .if eax >= 4
         mov maxGridIndex, 3
     .else
         mov maxGridIndex, eax
@@ -693,7 +688,8 @@ GetElapsedTime proc
 
     ; Verificar si se acabo el juego
     mov eax, gameState.isGameOver
-    .if eax == 1
+
+    .if eax != 0
         ; devolver el tiempo final
         mov eax, gameState.timeStarted
         mov elapsedTime, eax
@@ -738,6 +734,90 @@ GetElapsedTime proc
     ret
 GetElapsedTime endp
 
+
+;-----------------------------------------------------------------------------
+; FreezeTimer - Congela el tiempo actual del juego
+;-----------------------------------------------------------------------------
+FreezeTimer proc
+    ; Verificamos si el timer está activo
+    mov eax, gameState.timeStarted
+    .if eax != 0
+        ; Calcular el tiempo transcurrido
+        invoke GetTickCount
+        sub eax, gameState.timeStarted
+        
+        ; Guardar el tiempo congelado
+        mov gameState.timeStarted, eax
+    .endif
+    ret
+FreezeTimer endp
+
+;-----------------------------------------------------------------------------
+; RevealMines - Revela todas las minas
+;-----------------------------------------------------------------------------
+RevealMines proc
+    push eax
+    push ebx
+    push ecx
+    push edx
+    
+    ; Revelar todas las minas
+    mov ecx, 0    ; gridIndex
+    .while ecx < 4
+        mov edx, 0    ; cellY
+        .while edx < 4
+            mov eax, 0    ; cellX
+            .while eax < 4
+                ; Revisar si esta celda tiene mina
+                push eax
+                push ecx
+                push edx
+                
+                ; Calcular offset
+                mov eax, ecx
+                imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
+                
+                mov ebx, edx
+                imul ebx, 4           ; cellY * columnas por fila
+                add eax, ebx
+                
+                add eax, [esp+8]       ; + cellX (guardado en la pila)
+                
+                ; Multiplicar por el tamaño de la estructura Cell
+                mov ebx, TYPE Cell
+                mul ebx
+                
+                ; Obtener puntero a la celda
+                lea ebx, cellStates
+                add ebx, eax
+                
+                ; Revisar si tiene mina
+                mov al, (Cell PTR [ebx]).hasMine
+                .if al != 0
+                    ; Si tiene mina, revelarla
+                    mov (Cell PTR [ebx]).isRevealed, 1
+                .endif
+                
+                pop edx
+                pop ecx
+                pop eax
+                
+                inc eax
+            .endw
+            inc edx
+        .endw
+        inc ecx
+    .endw
+    
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+RevealMines endp
+
+
+
 ;-----------------------------------------------------------------------------
 ; ProcessCellClick - Procesa un clic en una celda
 ; Parámetros:
@@ -768,7 +848,7 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     
     ; Validar parámetros
     mov eax, gridIndex
-    .if eax >= 6
+    .if eax >= 4
         xor eax, eax    ; Retornar 0 (sin cambios) si el índice de cara es inválido
         ret
     .endif
@@ -786,7 +866,6 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
     .endif
     
     ; Calcular offset en el array de celdas
-    ; Nuevo cálculo del offset usando tamaño de estructura
     mov eax, gridIndex
     imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
     
@@ -857,131 +936,45 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         mov al, hasMine
 
         .if al == 0     ; No es mina
-            ; Depuración: celdas sin minas adyacentes
-            invoke wsprintf, ADDR buffer, ADDR debugNotHasMine
-            invoke OutputDebugString, ADDR buffer
-
-            ; Depuración: celdas sin minas adyacentes
-            invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
-            invoke OutputDebugString, ADDR buffer
-
             mov al, adjacentMines
             .if al == 0     ; No tiene minas adyacentes
-                ; En lugar de simplemente revelar esta celda, 
-                ; iniciamos el algoritmo de flood-fill 3D
                 invoke FloodFill3D, gridIndex, cellX, cellY
                 mov cellChanged, 1
 
-                ; Depuración: celdas sin minas adyacentes
-                invoke wsprintf, ADDR buffer, ADDR debugGameOver, 4004
-                invoke OutputDebugString, ADDR buffer
             .else
-
-                ; Depuración: celdas sin minas adyacentes
-                invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
-                invoke OutputDebugString, ADDR buffer
-                
                 ; Tiene minas adyacentes, solo revelar esta celda
                 mov ebx, cellPtr
                 mov (Cell PTR [ebx]).isRevealed, 1
                 inc gameState.cellsRevealed
                 mov cellChanged, 1
 
-                ; Depuración: celdas sin minas adyacentes
-                invoke wsprintf, ADDR buffer, ADDR debugGameOver, 405
-                invoke OutputDebugString, ADDR buffer
             .endif
 
-            ; Depuración: celdas sin minas adyacentes
-            invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
-            invoke OutputDebugString, ADDR buffer
+            ; Verificamos si gano la partida
+            mov eax, 64 - MINE_COUNT
+            .if gameState.cellsRevealed == eax
+                invoke FreezeTimer
+
+                ; Marcar el juego como ganado  
+                mov gameState.isGameOver, 1
+
+                invoke RevealMines
+            .endif
 
         .else
-            ; Depuración: celdas sin minas adyacentes
-            invoke wsprintf, ADDR buffer, ADDR debugHasMine
-            invoke OutputDebugString, ADDR buffer
-            ; Depuración: celdas sin minas adyacentes
-            invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
-            invoke OutputDebugString, ADDR buffer
             ; Es una mina, revelar esta celda y terminar el juego
             mov ebx, cellPtr
             mov (Cell PTR [ebx]).isRevealed, 1
             inc gameState.cellsRevealed
             mov cellChanged, 1
 
-            ; Verificamos si el timer está activo
-            mov eax, gameState.timeStarted
-            .if eax != 0
-                ; Calcular el tiempo transcurrido
-                invoke GetTickCount
-                sub eax, gameState.timeStarted
-                
-                ; Guardar el tiempo congelado
-                mov gameState.timeStarted, eax
-            .endif
+            invoke FreezeTimer
             
-            ; Marcar el juego como terminado
-            mov gameState.isGameOver, 1
+            ; Marcar el juego como perdido
+            mov gameState.isGameOver, 2
             
-            ; Revelar todas las minas para mostrarlas
-            push eax
-            push ebx
-            push ecx
-            push edx
+            invoke RevealMines
             
-            ; Revelar todas las minas
-            ; Esta parte es opcional: revelar todas las minas al perder
-            mov ecx, 0    ; gridIndex
-            .while ecx < 4
-                mov edx, 0    ; cellY
-                .while edx < 4
-                    mov eax, 0    ; cellX
-                    .while eax < 4
-                        ; Revisar si esta celda tiene mina
-                        push eax
-                        push ecx
-                        push edx
-                        
-                        ; Calcular offset
-                        mov eax, ecx
-                        imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
-                        
-                        mov ebx, edx
-                        imul ebx, 4           ; cellY * columnas por fila
-                        add eax, ebx
-                        
-                        add eax, [esp+8]       ; + cellX (guardado en la pila)
-                        
-                        ; Multiplicar por el tamaño de la estructura Cell
-                        mov ebx, TYPE Cell
-                        mul ebx
-                        
-                        ; Obtener puntero a la celda
-                        lea ebx, cellStates
-                        add ebx, eax
-                        
-                        ; Revisar si tiene mina
-                        mov al, (Cell PTR [ebx]).hasMine
-                        .if al != 0
-                            ; Si tiene mina, revelarla
-                            mov (Cell PTR [ebx]).isRevealed, 1
-                        .endif
-                        
-                        pop edx
-                        pop ecx
-                        pop eax
-                        
-                        inc eax
-                    .endw
-                    inc edx
-                .endw
-                inc ecx
-            .endw
-            
-            pop edx
-            pop ecx
-            pop ebx
-            pop eax
         .endif
         
     ; Si es clic derecho
@@ -1009,9 +1002,6 @@ ProcessCellClick proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, leftClick:DWORD
         .endif
     .endif
 
-    ; Depuración: celdas sin minas adyacentes
-    invoke wsprintf, ADDR buffer, ADDR debugGameOver, gameState.isGameOver
-    invoke OutputDebugString, ADDR buffer
     ; Retornar 1 si se realizaron cambios, 0 si no
     mov eax, cellChanged
     ret
@@ -1051,7 +1041,6 @@ GetCellState proc gridIndex:DWORD, cellX:DWORD, cellY:DWORD, pCellState:DWORD
     .endif
     
     ; Calcular offset en el array de celdas
-    ; Nuevo cálculo del offset usando tamaño de estructura
     mov eax, gridIndex
     imul eax, 4 * 4       ; gridIndex * (filas por cara * columnas por cara)
     

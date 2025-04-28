@@ -13,27 +13,22 @@ includelib \masm32\lib\gdi32.lib
 
 include include\constants.inc
 include include\structures.inc
-include src\ui\gameui.inc
+include src\ui\game-over\game-over.inc
 include src\game\game.inc
-include src\ui\grid.inc      ; Incluimos grid.inc para acceder a GetGridGeometry
+include src\ui\grid\grid.inc
 
-; Variables externas definidas en main.asm
 EXTERN gameState:GameState
 
 .data
-; Constantes para el mensaje y botón
-MESSAGE_COLOR        EQU 00F5F5F5h   ; Color del texto del mensaje (blanco)
-BUTTON_COLOR         EQU 003A3A3Ah   ; Color del botón (gris)
-BUTTON_HOVER_COLOR   EQU 004D4D4Dh   ; Color del botón al pasar el mouse (gris más claro)
-BUTTON_TEXT_COLOR    EQU 00F5F5F5h   ; Color del texto del botón (blanco)
-
 ; Texto del mensaje y botón
-GameOverMessage      db "Perdiste!", 0
+LoseMessage          db "Perdiste!", 0
+WinMessage           db "Ganaste!", 0
 RestartButtonText    db "Reiniciar", 0
 
 ; Variables para la geometría del botón
 buttonRect RECT <>
 
+; Posición Y del mensaje, en lugar de LOCAL por problmea de memoria
 messageY    DWORD 0
 
 ; Variables para geometría del grid (cuando no tengamos acceso a GetGridGeometry)
@@ -59,11 +54,29 @@ DrawGameMessage proc hWnd:HWND, hdc:HDC
     LOCAL oldBkMode:DWORD
     LOCAL oldTextColor:DWORD
     LOCAL gridStart:DWORD
+    LOCAL pMessage:DWORD
+    LOCAL messageLength:DWORD
     
     ; Verificar si el juego ha terminado
     mov eax, gameState.isGameOver
     .if eax == 0
-        ret     ; Si el juego no ha terminado, no mostrar mensaje
+        ret
+    .endif
+    
+    ; Determinar qué mensaje mostrar basado en el valor de isGameOver
+    mov eax, gameState.isGameOver
+    .if eax == 1
+        ; Victoria
+        lea eax, WinMessage
+        mov pMessage, eax
+        mov eax, sizeof WinMessage - 1
+        mov messageLength, eax
+    .else
+        ; Derrota (isGameOver == 2 u otro valor)
+        lea eax, LoseMessage
+        mov pMessage, eax
+        mov eax, sizeof LoseMessage - 1
+        mov messageLength, eax
     .endif
     
     ; Obtener dimensiones de la ventana
@@ -84,7 +97,7 @@ DrawGameMessage proc hWnd:HWND, hdc:HDC
     mov oldBkMode, eax
     
     ; Configurar color del texto
-    invoke SetTextColor, hdc, MESSAGE_COLOR
+    invoke SetTextColor, hdc, TEXT_COLOR
     mov oldTextColor, eax
 
     ; Calcular posición Y para el mensaje (centrado entre header y grid) B
@@ -103,7 +116,7 @@ DrawGameMessage proc hWnd:HWND, hdc:HDC
     mov oldFont, eax
     
     ; Obtener dimensiones del texto
-    invoke GetTextExtentPoint32, hdc, addr GameOverMessage, sizeof GameOverMessage - 1, addr textWidth
+    invoke GetTextExtentPoint32, hdc, pMessage, messageLength, addr textWidth
     mov eax, textWidth
     mov textWidth, eax       ; Guardar el ancho del texto
     
@@ -114,7 +127,7 @@ DrawGameMessage proc hWnd:HWND, hdc:HDC
     mov centerX, eax
     
     ; Dibujar el mensaje
-    invoke TextOut, hdc, centerX, messageY, addr GameOverMessage, sizeof GameOverMessage - 1
+    invoke TextOut, hdc, centerX, messageY, pMessage, messageLength
     
     ; Restaurar la configuración original
     invoke SelectObject, hdc, oldFont
@@ -156,7 +169,7 @@ DrawRestartButton proc hWnd:HWND, hdc:HDC
     ; Verificar si el juego ha terminado
     mov eax, gameState.isGameOver
     .if eax == 0
-        ret     ; Si el juego no ha terminado, no mostrar botón
+        ret
     .endif
     
     ; Obtener dimensiones de la ventana
@@ -177,7 +190,7 @@ DrawRestartButton proc hWnd:HWND, hdc:HDC
     div ebx
     mov buttonHeight, eax
     
-    ; Intentar obtener la geometría del grid
+    ; Obtener la geometría del grid
     invoke GetGridGeometry, addr gridStart, addr gridSz
     
     ; Calcular el punto final Y del grid
@@ -215,10 +228,10 @@ DrawRestartButton proc hWnd:HWND, hdc:HDC
     mov buttonRect.bottom, eax
     
     ; Crear pincel y pluma para dibujar el botón
-    invoke CreateSolidBrush, BUTTON_COLOR
+    invoke CreateSolidBrush, SECONDARY_COLOR_100
     mov hBrush, eax
     
-    invoke CreatePen, PS_SOLID, 1, BUTTON_COLOR
+    invoke CreatePen, PS_SOLID, 1, SECONDARY_COLOR_100
     mov hPen, eax
     
     ; Seleccionar pincel y pluma en el contexto de dispositivo
@@ -236,7 +249,7 @@ DrawRestartButton proc hWnd:HWND, hdc:HDC
     mov oldBkMode, eax
     
     ; Configurar color del texto
-    invoke SetTextColor, hdc, BUTTON_TEXT_COLOR
+    invoke SetTextColor, hdc, TEXT_COLOR
     mov oldTextColor, eax
     
     ; Crear una fuente para el texto del botón
@@ -304,7 +317,7 @@ HandleButtonClick proc hWnd:HWND, x:DWORD, y:DWORD
     ; Verificar si el juego ha terminado
     mov eax, gameState.isGameOver
     .if eax == 0
-        xor eax, eax        ; Si el juego no ha terminado, no procesar clic
+        xor eax, eax
         ret
     .endif
     

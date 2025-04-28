@@ -15,18 +15,13 @@ include include\constants.inc
 include include\structures.inc
 include include\resources.inc
 
-include src\ui\header.inc
-include src\game\game.inc    ; Incluir el módulo de juego para acceder a GetElapsedTime
+include src\ui\header\header.inc
+include src\game\game.inc
 
-; Variables externas definidas en main.asm
 EXTERN gameState:GameState
 
 .data
-; Color para el área de interfaz superior
-BACKGROUND_COLOR  EQU 00542517h  ; Azul medianoche
-TEXT_COLOR EQU 00F8FAFCh
 
-; Strings para mostrar
 FlagCountStr    db "  ", 0
 TimerStr        db "     ", 0    ; Buffer para el tiempo "MM:SS"
 FlagTemplate    db "%2d", 0
@@ -74,7 +69,7 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     mov rect.bottom, eax    ; Altura del 10% del alto total
     
     ; Crear un pincel para rellenar el rectángulo
-    invoke CreateSolidBrush, BACKGROUND_COLOR
+    invoke CreateSolidBrush, SECONDARY_COLOR_100
     mov hBrush, eax
     
     ; Rellenar el rectángulo con el pincel
@@ -112,7 +107,6 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     ; MEDIDAS PARA ALINEACIONES
     ;-------------------------------------------------------------
     ; Anchos de textos
-
     invoke GetTextExtentPoint32, hdc, ADDR FlagCountStr, 3, ADDR textWidth
     invoke GetTextExtentPoint32, hdc, ADDR TimerStr, 5, ADDR timerTextWidth
     
@@ -176,7 +170,7 @@ DrawHeader proc hWnd:HWND, hdc:HDC
     mov eax, topAreaHeight
     sub eax, iconSize
     shr eax, 1          ; Dividir por 2
-    mov centerYIcons, eax    ; centerYIcons es la posición Y para los íconos
+    mov centerYIcons, eax
     
 
     ;-------------------------------------------------------------

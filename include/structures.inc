@@ -14,3 +14,14 @@ Cell STRUCT
     isFlagged       BYTE ?     ; 1 si tiene bandera, 0 si no
     adjacentMines   BYTE ?     ; Número de minas adyacentes (0-26)
 Cell ENDS
+
+; Estructura para la geometría del grid
+GridGeometry STRUCT
+    gridSize              DWORD ?   ; Tamaño de cada grid
+    cellWidth             DWORD ?   ; Ancho de cada celda
+    cellHeight            DWORD ?   ; Alto de cada celda
+    startX                DWORD ?   ; Posición X inicial
+    startY                DWORD ?   ; Posición Y inicial
+    horizontalMarginPixels DWORD ?  ; Margen horizontal en píxeles
+    topAreaHeight         DWORD ?   ; Altura del área superior (header)
+GridGeometry ENDS
